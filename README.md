@@ -43,6 +43,7 @@ HTML (.htm, .html)
 PDF (.pdf)
 
 ⚙️ Installation
+
 1. Clone the repository
 git clone https://github.com/yourusername/climate-target-extractor.git
 cd climate-target-extractor
@@ -57,72 +58,109 @@ pip install pytesseract pdf2image
 Additionally:
 
 Install Tesseract OCR
+
 Install Poppler (required by pdf2image)
 
 🚀 Usage
+
 Basic structure
+
 python extract_target_candidates.py \
   --input <input_folder> \
   --output <output_file> \
   --source <pdf|html> \
   --lang <cn|en>
+
 Examples
+
 Chinese HTML
+
 python extract_target_candidates.py \
   --lang cn --source html \
   --input ./data/html_cn \
   --output ./outputs/cn_html.xlsx
+
 Chinese PDF with OCR
+
 python extract_target_candidates.py \
   --lang cn --source pdf --ocr \
   --tesseract-lang chi_sim \
   --input ./data/pdf_cn \
   --output ./outputs/cn_pdf.xlsx
+
 English PDF
+
 python extract_target_candidates.py \
   --lang en --source pdf \
   --input ./data/pdf_en \
   --output ./outputs/en_pdf.csv
 
 📊 Output format
+
 The script produces a table with the following columns:
 
 Column	Description
+
 Document	Source file name
+
 Sentence	Extracted candidate sentence
+
 Language	Language of the document (cn or en)
+
 Source_Type	Input type (html or pdf)
+
 Extraction_Method	html_text, pdf_text, or ocr
 
 🧠 Methodology (brief)
+
 Candidate sentences are identified using:
 
 Sentence segmentation
+
 Chinese: punctuation-based splitting (。！？；)
+
 English: punctuation-based splitting (. ! ?)
+
 Target detection rules
+
 Regex patterns capturing:
+
 years (e.g. “by 2030”, “到2025年”)
+
 comparative baselines (e.g. “compared to 2005”)
+
 percentage changes (e.g. “reduce by 40%”)
+
 Filtering criteria
+
 minimum sentence length
+
 presence of numerical values
+
 exclusion of structural elements (tables, appendices, dates)
 
 This approach prioritises coverage over precision.
 
 ⚠️ Limitations
+
 HTML extraction captures all visible text, including navigation elements
+
 PDF extraction quality depends on document structure
+
 OCR results depend on scan quality and language model
+
 Regex patterns are not exhaustive and may require adaptation for other corpora
+
 No semantic validation of targets is performed
 
 🧩 Potential extensions
+
 Named entity recognition (NER) for metrics and sectors
+
 Structured parsing (baseline year, target year, magnitude)
+
 Improved HTML content filtering
+
 Integration with NLP pipelines
 
 📜 License
