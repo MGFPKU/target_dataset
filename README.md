@@ -45,8 +45,9 @@ PDF (.pdf)
 ⚙️ Installation
 
 1. Clone the repository
-git clone https://github.com/yourusername/climate-target-extractor.git
-cd climate-target-extractor
+git clone https://github.com/MGFPKU/target_dataset.git
+
+cd target_dataset
 2. Install dependencies
 pip install -r requirements.txt
 3. Optional: OCR setup (for scanned PDFs)
