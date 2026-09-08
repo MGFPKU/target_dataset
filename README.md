@@ -120,6 +120,35 @@ The script produces a table with the following columns:
 
 ---
 
+## 📦 Dataset & maintenance
+
+The repository also contains the curated climate-target dataset:
+
+- `Targets_cn.xlsx` — Chinese target records (data sheets + 来源 sheet + 说明 sheet)
+- `Targets_en.xlsx` — English version, row-aligned with the Chinese sheets
+
+Data revisions are applied via `revisions.py`, which keeps every step of the
+revision process as a subcommand. Fix subcommands run as a dry-run check by
+default; add `--apply` to write (a `.bak` backup is made first).
+
+    python revisions.py compare                # CN/EN consistency check (read-only)
+    python revisions.py data --apply           # fix data diffs found by compare
+    python revisions.py category-a --apply     # A-list category fixes + EN Energy|Power row order
+    python revisions.py category-b --apply     # B-list category fixes (user-judged)
+    python revisions.py direction --apply      # direction-column wording fixes
+    python revisions.py direction2 --apply     # contradictory direction+value combinations
+    python revisions.py direction3 --apply     # direction/value wording vs 政策原文
+    python revisions.py direction3b --apply    # direction/value wording vs 政策原文 (round 3b)
+    python revisions.py rename-categories      # drop the 目标/target suffix (writes immediately)
+    python revisions.py unify-percent          # EN "X percent" -> "X%" (writes immediately)
+    python revisions.py add-ip2604             # add the IP2604 target (writes immediately)
+
+Run `python revisions.py` without arguments for the full subcommand help.
+When github.com is unreachable, `push_via_api.py` pushes commits through the
+GitHub API instead of `git push`.
+
+---
+
 ## 🧠 Methodology (brief)
 
 Candidate sentences are identified using:
