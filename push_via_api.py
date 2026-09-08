@@ -43,13 +43,21 @@ def commit_meta(repo_dir, sha):
         'author': who('author '), 'committer': who('committer '),
     }
 
-def push_repo(repo, repo_dir, changed_paths):
+def remote_sha(repo, branch='main'):
+    try:
+        return api('GET', f'/repos/{repo}/git/refs/heads/{branch}')['object']['sha']
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+def push_repo(repo, repo_dir, changed_paths, deleted_paths=()):
     commit_sha = git(repo_dir, 'rev-parse', 'HEAD').decode().strip()
     print(f'=== {repo} {commit_sha[:7]} ===')
     meta = commit_meta(repo_dir, commit_sha)
     tree_sha = meta['tree']
 
-    if changed_paths:
+    if changed_paths or deleted_paths:
         entries = []
         base_tree = git(repo_dir, 'rev-parse', f'{meta["parents"][0]}^{{tree}}').decode().strip()
         for path in changed_paths:
@@ -60,6 +68,9 @@ def push_repo(repo, repo_dir, changed_paths):
             assert got == blob_sha, f'blob sha mismatch {path}: {got} != {blob_sha}'
             print(f'  blob {path}: {blob_sha[:10]} ok')
             entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob_sha})
+        for path in deleted_paths:
+            entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
+            print(f'  delete {path}')
         tree_sha = api('POST', f'/repos/{repo}/git/trees',
                        {'base_tree': base_tree, 'tree': entries})['sha']
         assert tree_sha == meta['tree'], f'tree sha mismatch: {tree_sha} != {meta["tree"]}'
@@ -81,13 +92,17 @@ if __name__ == '__main__':
     base = r'D:\MGF databases\Target tracker'
     jobs = [
         ('MGFPKU/target_dataset', base + r'\target_dataset',
-         ['Targets_cn.xlsx', 'fix_direction2_cn.py']),
-        ('MGFPKU/target_visualization', base + r'\target_visualization', []),
-        ('MGFPKU/target_table', base + r'\target_table', []),
+         ['push_via_api.py'], []),
+        ('MGFPKU/target_visualization', base + r'\target_visualization', [], []),
+        ('MGFPKU/target_table', base + r'\target_table', [], []),
     ]
-    for repo, d, paths in jobs:
+    for repo, d, paths, deleted in jobs:
         try:
-            push_repo(repo, d, paths)
+            head = git(d, 'rev-parse', 'HEAD').decode().strip()
+            if remote_sha(repo) == head:
+                print(f'=== {repo} {head[:7]} already on remote, skipping')
+                continue
+            push_repo(repo, d, paths, deleted)
         except urllib.error.HTTPError as e:
             print(f'FAIL {repo}: HTTP {e.code} {e.read().decode()[:500]}')
             sys.exit(1)
