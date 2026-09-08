@@ -51,6 +51,16 @@ def remote_sha(repo, branch='main'):
             return None
         raise
 
+def commit_paths(repo_dir, commit_sha):
+    changed, deleted = [], []
+    for line in git(repo_dir, 'diff-tree', '-r', '--name-status', commit_sha).decode().splitlines():
+        status, _, path = line.partition('\t')
+        if status in ('A', 'M', 'T'):
+            changed.append(path)
+        elif status == 'D':
+            deleted.append(path)
+    return changed, deleted
+
 def push_repo(repo, repo_dir, changed_paths, deleted_paths=()):
     commit_sha = git(repo_dir, 'rev-parse', 'HEAD').decode().strip()
     print(f'=== {repo} {commit_sha[:7]} ===')
@@ -91,18 +101,23 @@ def push_repo(repo, repo_dir, changed_paths, deleted_paths=()):
 if __name__ == '__main__':
     base = r'D:\MGF databases\Target tracker'
     jobs = [
-        ('MGFPKU/target_dataset', base + r'\target_dataset',
-         ['push_via_api.py'], []),
-        ('MGFPKU/target_visualization', base + r'\target_visualization', [], []),
-        ('MGFPKU/target_table', base + r'\target_table', [], []),
+        ('MGFPKU/target_dataset', base + r'\target_dataset'),
+        ('MGFPKU/target_visualization', base + r'\target_visualization'),
+        ('MGFPKU/target_table', base + r'\target_table'),
     ]
-    for repo, d, paths, deleted in jobs:
+    for repo, d in jobs:
         try:
             head = git(d, 'rev-parse', 'HEAD').decode().strip()
-            if remote_sha(repo) == head:
+            rsha = remote_sha(repo)
+            if rsha == head:
                 print(f'=== {repo} {head[:7]} already on remote, skipping')
                 continue
-            push_repo(repo, d, paths, deleted)
+            parent = git(d, 'rev-parse', f'{head}^').decode().strip()
+            if rsha is not None and rsha != parent:
+                print(f'FAIL {repo}: remote main {rsha[:10]} != parent {parent[:10]} '
+                      f'of local HEAD; push commits one at a time')
+                sys.exit(1)
+            push_repo(repo, d, *commit_paths(d, head))
         except urllib.error.HTTPError as e:
             print(f'FAIL {repo}: HTTP {e.code} {e.read().decode()[:500]}')
             sys.exit(1)
