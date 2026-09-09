@@ -2,12 +2,13 @@
 """Push local commits to GitHub via the git database API (github.com:443 blocked).
 
 Replicates tree/blob/commit objects exactly, so remote SHAs equal local SHAs.
+Pushes the whole unpushed range (oldest first), one commit per API round.
 GitHub keeps timezone offsets and message bytes as sent; the message must be
 extracted verbatim from the raw commit object (git log --format=%B adds a
 trailing newline, which breaks sha equality).
 Usage: PYTHONIOENCODING=utf-8 python push_via_api.py
 """
-import base64, datetime, json, re, subprocess, sys, urllib.request, urllib.error
+import base64, datetime, json, os, re, subprocess, sys, urllib.request, urllib.error
 
 TOKEN = subprocess.check_output(['gh', 'auth', 'token']).decode().strip()
 API = 'https://api.github.com'
@@ -61,8 +62,7 @@ def commit_paths(repo_dir, commit_sha):
             deleted.append(path)
     return changed, deleted
 
-def push_repo(repo, repo_dir, changed_paths, deleted_paths=()):
-    commit_sha = git(repo_dir, 'rev-parse', 'HEAD').decode().strip()
+def push_repo(repo, repo_dir, commit_sha, changed_paths, deleted_paths=()):
     print(f'=== {repo} {commit_sha[:7]} ===')
     meta = commit_meta(repo_dir, commit_sha)
     tree_sha = meta['tree']
@@ -107,17 +107,19 @@ if __name__ == '__main__':
     ]
     for repo, d in jobs:
         try:
+            if not os.path.isdir(os.path.join(d, '.git')):
+                print(f'=== {repo} skipped (no local repo at {d})')
+                continue
             head = git(d, 'rev-parse', 'HEAD').decode().strip()
             rsha = remote_sha(repo)
             if rsha == head:
                 print(f'=== {repo} {head[:7]} already on remote, skipping')
                 continue
-            parent = git(d, 'rev-parse', f'{head}^').decode().strip()
-            if rsha is not None and rsha != parent:
-                print(f'FAIL {repo}: remote main {rsha[:10]} != parent {parent[:10]} '
-                      f'of local HEAD; push commits one at a time')
-                sys.exit(1)
-            push_repo(repo, d, *commit_paths(d, head))
+            rng = f'{rsha}..{head}' if rsha else head
+            todo = git(d, 'rev-list', '--reverse', rng).decode().split()
+            print(f'=== {repo}: {len(todo)} commit(s) to push')
+            for sha in todo:
+                push_repo(repo, d, sha, *commit_paths(d, sha))
         except urllib.error.HTTPError as e:
             print(f'FAIL {repo}: HTTP {e.code} {e.read().decode()[:500]}')
             sys.exit(1)
