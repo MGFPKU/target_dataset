@@ -67,31 +67,29 @@ def push_repo(repo, repo_dir, commit_sha, changed_paths, deleted_paths=()):
     meta = commit_meta(repo_dir, commit_sha)
     tree_sha = meta['tree']
 
-    if changed_paths or deleted_paths:
-        base_tree = git(repo_dir, 'rev-parse', f'{meta["parents"][0]}^{{tree}}').decode().strip()
-        if changed_paths:
-            entries = []
-            for path in changed_paths:
-                blob_sha = git(repo_dir, 'rev-parse', f'{commit_sha}:{path}').decode().strip()
-                content = git(repo_dir, 'cat-file', 'blob', f'{commit_sha}:{path}')
-                got = api('POST', f'/repos/{repo}/git/blobs',
-                          {'content': base64.b64encode(content).decode(), 'encoding': 'base64'})['sha']
-                assert got == blob_sha, f'blob sha mismatch {path}: {got} != {blob_sha}'
-                print(f'  blob {path}: {blob_sha[:10]} ok')
-                entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob_sha})
-            tree_sha = api('POST', f'/repos/{repo}/git/trees',
-                           {'base_tree': base_tree, 'tree': entries})['sha']
-            print(f'  tree (blobs): {tree_sha[:10]} ok')
-            base_tree = tree_sha
-        if deleted_paths:
-            # separate round: mixing add+delete entries in one create-tree
-            # call makes GitRPC fail with 422 BadObjectState
-            del_entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'sha': None}
-                           for p in deleted_paths]
-            tree_sha = api('POST', f'/repos/{repo}/git/trees',
-                           {'base_tree': base_tree, 'tree': del_entries})['sha']
-            print(f'  tree (deletes): {tree_sha[:10]} ok')
-        assert tree_sha == meta['tree'], f'tree sha mismatch: {tree_sha} != {meta["tree"]}'
+    for path in changed_paths:
+        blob_sha = git(repo_dir, 'rev-parse', f'{commit_sha}:{path}').decode().strip()
+        content = git(repo_dir, 'cat-file', 'blob', f'{commit_sha}:{path}')
+        got = api('POST', f'/repos/{repo}/git/blobs',
+                  {'content': base64.b64encode(content).decode(), 'encoding': 'base64'})['sha']
+        assert got == blob_sha, f'blob sha mismatch {path}: {got} != {blob_sha}'
+        print(f'  blob {path}: {blob_sha[:10]} ok')
+
+    # Post the complete tree listing (no base_tree): GitRPC rejects base_tree
+    # chains through intermediate trees not referenced by any remote commit,
+    # and mixed add/delete rounds against a base tree.
+    entries = []
+    for line in git(repo_dir, 'ls-tree', '-z', f'{commit_sha}^{{tree}}').split(b'\0'):
+        if not line:
+            continue
+        mode, typ, rest = line.split(b' ', 2)
+        sha, path = rest.split(b'\t', 1)
+        entries.append({'path': path.decode(), 'mode': mode.decode(),
+                        'type': 'tree' if typ == b'tree' else 'blob',
+                        'sha': sha.decode()})
+    got_tree = api('POST', f'/repos/{repo}/git/trees', {'tree': entries})['sha']
+    assert got_tree == tree_sha, f'tree sha mismatch: {got_tree} != {tree_sha}'
+    print(f'  tree: {got_tree[:10]} ok')
 
     new_sha = api('POST', f'/repos/{repo}/git/commits', {
         'message': meta['message'], 'tree': tree_sha,
