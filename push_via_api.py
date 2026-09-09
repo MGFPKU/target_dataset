@@ -3,12 +3,14 @@
 
 Replicates tree/blob/commit objects exactly, so remote SHAs equal local SHAs.
 Pushes the whole unpushed range (oldest first), one commit per API round.
+Then checks the dataset Release assets (Targets_cn/en.xlsx, served to the
+website) against the local files; pass --sync-release to upload when stale.
 GitHub keeps timezone offsets and message bytes as sent; the message must be
 extracted verbatim from the raw commit object (git log --format=%B adds a
 trailing newline, which breaks sha equality).
-Usage: PYTHONIOENCODING=utf-8 python push_via_api.py
+Usage: PYTHONIOENCODING=utf-8 python push_via_api.py [--force] [--sync-release]
 """
-import base64, datetime, json, os, re, subprocess, sys, urllib.request, urllib.error
+import base64, datetime, hashlib, json, os, re, subprocess, sys, urllib.request, urllib.error
 
 TOKEN = subprocess.check_output(['gh', 'auth', 'token']).decode().strip()
 API = 'https://api.github.com'
@@ -122,6 +124,40 @@ def commits_to_push(repo, d, head):
         sha = parents[0]
     return todo[::-1], sha
 
+
+RELEASE_ASSETS = ('Targets_cn.xlsx', 'Targets_en.xlsx')
+
+
+def release_sync(repo, repo_dir, upload):
+    """Compare latest-release xlsx assets with local files; upload if asked."""
+    try:
+        rel = api('GET', f'/repos/{repo}/releases/latest')
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print(f'RELEASE SYNC {repo}: no release found')
+            return
+        raise
+    tag = rel['tag_name']
+    for name in RELEASE_ASSETS:
+        path = os.path.join(repo_dir, name)
+        if not os.path.isfile(path):
+            print(f'RELEASE SYNC {name}: local file missing, skipping')
+            continue
+        local = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+        asset = next((a for a in rel['assets'] if a['name'] == name), None)
+        remote = (asset.get('digest') or '').split(':', 1)[-1] if asset else ''
+        if remote == local:
+            print(f'RELEASE SYNC {name}: up to date ({tag})')
+        else:
+            print(f'RELEASE SYNC {name}: OUT OF DATE on {tag} '
+                  f'(release sha256 {remote[:12] or "none"} != local {local[:12]})')
+            if upload:
+                subprocess.run(['gh', 'release', 'upload', tag, name, '--clobber',
+                                '--repo', repo], cwd=repo_dir, check=True)
+                print(f'RELEASE SYNC {name}: uploaded')
+            else:
+                print(f'  run with --sync-release to upload')
+
 if __name__ == '__main__':
     base = r'D:\MGF databases\Target tracker'
     jobs = [
@@ -166,3 +202,10 @@ if __name__ == '__main__':
             print(f'FAIL {repo}: {e}')
             sys.exit(1)
     print('ALL PUSHED')
+    for repo, d in jobs:
+        if repo == 'MGFPKU/target_dataset':
+            try:
+                release_sync(repo, d, '--sync-release' in sys.argv)
+            except Exception as e:
+                print(f'FAIL {repo} release sync: {e}')
+                sys.exit(1)
