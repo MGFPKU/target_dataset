@@ -93,10 +93,29 @@ def push_repo(repo, repo_dir, commit_sha, changed_paths, deleted_paths=()):
     })['sha']
     assert new_sha == commit_sha, f'commit sha mismatch: {new_sha} != {commit_sha}'
     print(f'  commit: {new_sha[:10]} ok')
-
-    api('PATCH', f'/repos/{repo}/git/refs/heads/main', {'sha': new_sha, 'force': False})
-    print(f'  ref main -> {new_sha[:10]}')
     return new_sha
+
+
+def remote_has(repo, sha):
+    try:
+        api('GET', f'/repos/{repo}/git/commits/{sha}')
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+
+
+def commits_to_push(repo, d, head):
+    """Walk back from head until a commit already on the remote is found."""
+    todo, sha = [], head
+    while not remote_has(repo, sha):
+        todo.append(sha)
+        parents = commit_meta(d, sha)['parents']
+        if not parents:
+            return todo[::-1], None
+        sha = parents[0]
+    return todo[::-1], sha
 
 if __name__ == '__main__':
     base = r'D:\MGF databases\Target tracker'
@@ -115,11 +134,26 @@ if __name__ == '__main__':
             if rsha == head:
                 print(f'=== {repo} {head[:7]} already on remote, skipping')
                 continue
-            rng = f'{rsha}..{head}' if rsha else head
-            todo = git(d, 'rev-list', '--reverse', rng).decode().split()
+            todo, base = commits_to_push(repo, d, head)
+            fast_fwd = base == rsha
+            if rsha and not fast_fwd:
+                msg = api('GET', f'/repos/{repo}/git/commits/{rsha}')['message']
+                print(f'{repo}: remote main {rsha[:10]} ("{msg[:60]}") is not in '
+                      f'local history; pushing {len(todo)} commit(s) would overwrite it')
+                if '--force' not in sys.argv:
+                    print('re-run with --force to overwrite remote main')
+                    sys.exit(1)
             print(f'=== {repo}: {len(todo)} commit(s) to push')
             for sha in todo:
                 push_repo(repo, d, sha, *commit_paths(d, sha))
+            if rsha is None:
+                api('POST', f'/repos/{repo}/git/refs',
+                    {'ref': 'refs/heads/main', 'sha': head})
+            else:
+                api('PATCH', f'/repos/{repo}/git/refs/heads/main',
+                    {'sha': head, 'force': not fast_fwd})
+            print(f'  ref main -> {head[:10]}'
+                  f'{"" if fast_fwd else " (forced)"}')
         except urllib.error.HTTPError as e:
             print(f'FAIL {repo}: HTTP {e.code} {e.read().decode()[:500]}')
             sys.exit(1)
