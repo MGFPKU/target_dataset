@@ -1,3 +1,17 @@
 # Raw source materials (663 MB) are distributed via GitHub Release assets,
 # not committed to the repository.
 Data_sources/
+Data_sources.zip
+
+# Local-only working documents, not for the public repo
+目标类别核查报告.md
+Target_Category_Revision_Rationale.docx
+gen_category_rationale_docx.py
+
+# Revision backups and scratch artifacts
+*.bak*
+__pycache__/
+.claude/
+compare_output.txt
+affected_rows_dump*.txt
+ccnt_state.json

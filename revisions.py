@@ -19,11 +19,17 @@ Subcommands:
   direction3           direction/value wording vs 政策原文 round 3
   direction3b          direction/value wording vs 政策原文 round 3b
   rename-categories    drop the trailing 目标/target suffix from category names
+  restructure-taxonomy apply the Target Category Revision Rationale (18 -> 16)
+  clear-changelog      remove per-revision changelog rows from 说明/README, leaving one blank row
   unify-percent        EN '<digit> percent' -> '<digit>%'
   add-ip2604           add the CAC digital-green plan target (IP2604)
+  wording-fix          wording vs 政策原文 (CN first, EN mirrors CN) + EN README legend
+  fix-period           来源 sheet 覆盖时期: letter codes -> period values (CN)
+  wording2             AP1802 metric + 约/左右 hedge alignment + O1802 baseline (CN+EN)
+  fix-double-space     EN data sheets: collapse double-space typos in metric/mag/sentence
 """
 import sys, re, shutil, datetime
-from collections import defaultdict
+from collections import defaultdict, Counter
 from copy import copy
 
 import openpyxl
@@ -111,24 +117,29 @@ def norm_cn_text(s):
             v = float(parse_cn_int(t))
         vals.add(v)
     # counters: 十五种 / 万种 / 百家 / 千家 (not 一次能源, not 第十一个五年,
-    # not 万 in "320万户" — a standalone 万/千/百 counts only when no number precedes)
+    # not 万 in "320万户" — a standalone 万/千/百 counts only when no number
+    # precedes, even with a space: "4000 万个").
+    # 、-joined numerals are all counted: 一、二类 -> {1, 2}
     for m in re.finditer(
-        r"(?<![0-9一两二三四五六七八九十])([一两二三四五六七八九十百千万]+)(?:多)?(?:种|个|家|户|项|类|套|辆|台|座|倍|件)(?!五年)", s):
-        vals.add(float(parse_cn_int(m.group(1))))
+        r"(?<![0-9一两二三四五六七八九十])(?<![\d一两二三四五六七八九十]\s)"
+        r"([一两二三四五六七八九十百千万]+(?:、[一两二三四五六七八九十百千万]+)*)(?:多)?(?:种|个|家|户|项|类|套|辆|台|座|倍|件)(?!五年)", s):
+        for part in m.group(1).split('、'):
+            vals.add(float(parse_cn_int(part)))
     if "百公里" in s:
         vals.add(100.0)
     # 万元 -> 10,000 (EN "10,000 yuan"); exclude 万亿元 / 1000万元.
     # Only when the text has another number, so bare metric names like
     # "万元工业增加值用水量" don't add a value the EN metric lacks.
-    if re.search(r"(?<![\d亿])万元", s) and re.search(r"\d", s):
+    if re.search(r"(?<![\d亿])(?<![\d亿]\s)万元", s) and re.search(r"\d", s):
         vals.add(10000.0)
     for m in FYP_CN_RE.finditer(s):
         vals.add(f"FYP{FYP_MAP[m.group()]}")
     # 第十二个五年 -> FYP12
     for m in re.finditer(r"第([一两二三四五六七八九十]+)个五年", s):
         vals.add(f"FYP{parse_cn_int(m.group(1))}")
-    # X千瓦 -> kW plus W- and GW-scale equivalents (mirrors EN kW/MW/GW rules)
-    for m in re.finditer(r"(?<![A-Za-z0-9.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(万亿|亿|万)?千瓦(?!时)", s):
+    # X千瓦 -> kW plus W- and GW-scale equivalents (mirrors EN kW/MW/GW rules).
+    # \s* tolerates the dataset's spaced convention "30 万千瓦".
+    for m in re.finditer(r"(?<![A-Za-z0-9.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(万亿|亿|万)?\s*千瓦(?!时)", s):
         num = float(m.group(1).replace(",", ""))
         mult = {"万": 1e4, "亿": 1e8, "万亿": 1e12}.get(m.group(2) or "", 1)
         v = num * mult
@@ -136,18 +147,21 @@ def norm_cn_text(s):
         vals.add(round(v * 1e3, 6))
         vals.add(round(v / 1e6, 6))
     # Chinese-numeral power units: 四千万千瓦 / 五十吉瓦
-    for m in re.finditer(r"(?<![0-9一两二三四五六七八九十])([一两二三四五六七八九十百千万]+)千瓦(?!时)", s):
+    # (the spaced-digit guard keeps "30 万千瓦" from parsing 万 as a bare 10000)
+    for m in re.finditer(r"(?<![0-9一两二三四五六七八九十])(?<![\d一两二三四五六七八九十]\s)"
+                         r"([一两二三四五六七八九十百千万]+)\s*千瓦(?!时)", s):
         v = float(parse_cn_int(m.group(1)))
         vals.add(round(v, 6))
         vals.add(round(v * 1e3, 6))
         vals.add(round(v / 1e6, 6))
     # X吉瓦 -> gigawatts (bare value plus W- and kW-scale)
-    for m in re.finditer(r"(\d+(?:\.\d+)?)吉瓦", s):
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*吉瓦", s):
         num = float(m.group(1))
         vals.add(round(num, 6))
         vals.add(round(num * 1e9, 6))
         vals.add(round(num * 1e6, 6))
-    for m in re.finditer(r"(?<![0-9一两二三四五六七八九十])([一两二三四五六七八九十百千万]+)吉瓦", s):
+    for m in re.finditer(r"(?<![0-9一两二三四五六七八九十])(?<![\d一两二三四五六七八九十]\s)"
+                         r"([一两二三四五六七八九十百千万]+)\s*吉瓦", s):
         num = float(parse_cn_int(m.group(1)))
         vals.add(round(num, 6))
         vals.add(round(num * 1e9, 6))
@@ -169,6 +183,11 @@ WORD_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
             "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
             "twenty": 20}
 
+ROMAN = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7,
+         "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12, "xiii": 13,
+         "xiv": 14, "xv": 15, "xvi": 16, "xvii": 17, "xviii": 18,
+         "xix": 19, "xx": 20}
+
 def norm_en_text(s):
     vals = set()
     # ranges: "100-150 million tons" (also en-dash / em-dash / tilde)
@@ -182,7 +201,8 @@ def norm_en_text(s):
         vals.add(round(float(m.group(1)) * mult, 6))
         vals.add(round(float(m.group(2)) * mult, 6))
     for m in re.finditer(
-        r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d—–~-])(?!st\b|nd\b|rd\b|th\b)"
+        r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?(?!,\d{3}))"
+        r"(?![\d—–~-])(?!st\b|nd\b|rd\b|th\b)"
         r"\s*(trillion|billion|million|thousand|giga|mega|percent|Mt|mt)?",
         s, re.IGNORECASE):
         num = float(m.group(1).replace(",", ""))
@@ -191,6 +211,17 @@ def norm_en_text(s):
                 "trillion": 1e12, "giga": 1e9, "mega": 1e6,
                 "percent": 1, "mt": 1e6}.get(w, 1)
         vals.add(round(num * mult, 6))
+    # parenthesized numbers mirror CN "（五）" which tokenizes to nothing
+    for m in re.finditer(r"\((\d+(?:\.\d+)?)\)", s):
+        vals.discard(float(m.group(1)))
+    # bare numbers before power units (e.g. "600 MW"): CN attaches 万/吉瓦 to
+    # the number and adds no bare value; the kW/MW/GW loops add scaled
+    # equivalents instead. Hour forms (kWh) keep the bare number, like CN 千瓦时.
+    for m in re.finditer(
+        r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*"
+        r"(?:kilowatts?|kW|megawatts?|MW|gigawatts?|GW)\b(?![- ]?h(?:ours?)?)",
+        s, re.IGNORECASE):
+        vals.discard(float(m.group(1).replace(",", "")))
     # word numbers: "one million", "two hundred million"
     for m in re.finditer(
         r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
@@ -211,6 +242,16 @@ def norm_en_text(s):
         r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b",
         s, re.IGNORECASE):
         vals.add(float(WORD_NUM[m.group(1).lower()]))
+    # Roman numerals after category words: "Class I and II" (mirrors CN 一、二类).
+    # The \b keeps "level in" (i = 1) out; range forms ("Class I-IV") add
+    # nothing, like CN Ⅰ－Ⅳ类.
+    for m in re.finditer(
+        r"\b(?:[Cc]lass(?:es)?|[Cc]ategor(?:y|ies)|[Tt]ype|[Tt]ier|[Gg]rade|[Ll]evel)s?\s+([IVXivx]+)\b"
+        r"(?:\s*(?:,\s*|\s+and\s+)([IVXivx]+))?(?!\s*[-–—]\s*[IVXivx]+\b)",
+        s):
+        for g in m.groups():
+            if g and ROMAN.get(g.lower()):
+                vals.add(float(ROMAN[g.lower()]))
     m = re.search(r"(\d+)(?:st|nd|rd|th) (?:FYP|Five[ -]Year)", s)
     if m:
         vals.add(f"FYP{int(m.group(1))}")
@@ -218,7 +259,7 @@ def norm_en_text(s):
     # Optional magnitude word covers "50 million kilowatts".
     for m in re.finditer(
         r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*"
-        r"(trillion|billion|million|thousand)?\s*(?:kilowatts?|kW)(?![- ]?h(?:ours?)?\b)",
+        r"(trillion|billion|million|thousand)?\s*-?\s*(?:kilowatts?|kW)(?![- ]?h(?:ours?)?\b)",
         s, re.IGNORECASE):
         v = float(m.group(1).replace(",", "")) * {"thousand": 1e3,
             "million": 1e6, "billion": 1e9, "trillion": 1e12}.get(
@@ -228,7 +269,7 @@ def norm_en_text(s):
         vals.add(round(v / 1e6, 6))
     for m in re.finditer(
         r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*"
-        r"(trillion|billion|million|thousand)?\s*(?:megawatts?|MW)(?![- ]?h(?:ours?)?\b)",
+        r"(trillion|billion|million|thousand)?\s*-?\s*(?:megawatts?|MW)(?![- ]?h(?:ours?)?\b)",
         s, re.IGNORECASE):
         v = float(m.group(1).replace(",", "")) * {"thousand": 1e3,
             "million": 1e6, "billion": 1e9, "trillion": 1e12}.get(
@@ -238,7 +279,7 @@ def norm_en_text(s):
         vals.add(round(v / 1e3, 6))
     for m in re.finditer(
         r"(?<![A-Za-z0-9.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*"
-        r"(trillion|billion|million|thousand)?\s*(?:gigawatts?|GW)(?![- ]?h(?:ours?)?\b)",
+        r"(trillion|billion|million|thousand)?\s*-?\s*(?:gigawatts?|GW)(?![- ]?h(?:ours?)?\b)",
         s, re.IGNORECASE):
         v = float(m.group(1).replace(",", "")) * {"thousand": 1e3,
             "million": 1e6, "billion": 1e9, "trillion": 1e12}.get(
@@ -272,7 +313,8 @@ COUNTER_WORDS = ("units", "enterprises", "companies", "parks", "factories",
                  "stations", "schools", "programs", "products",
                  "cooperatives", "households", "tons", "tonnes", "hectares",
                  "kilometers", "kilometres", "kwh", "m2", "km", "meters",
-                 "metres", "farms", "plants", "pieces", "projects", "hospitals")
+                 "metres", "farms", "plants", "pieces", "projects", "hospitals",
+                 "high-standard")
 
 def years_en(s):
     out = set()
@@ -281,7 +323,7 @@ def years_en(s):
         wm = re.match(r"\s*(million|billion|thousand|trillion|giga|mega|mt)\b", after, re.I)
         if wm:
             continue
-        wm2 = re.match(r"\s*([a-z]+)\b", after, re.I)
+        wm2 = re.match(r"\s*([a-z]+(?:-[a-z]+)*)\b", after, re.I)
         if wm2 and wm2.group(1).lower() in COUNTER_WORDS:
             continue
         out.add(int(m.group()))
@@ -394,6 +436,12 @@ def pair_groups(g1, g2):
         _, i, j = best
         pairs.append((t1[i][2], t2[j][2]))
         del t1[i], t2[j]
+    # fallback: rows whose tokens share nothing (fully reworded metric) are
+    # paired positionally when the leftover counts match — CN and EN sheets
+    # keep identical row order, so the position itself identifies the pair.
+    while t1 and t2 and len(t1) == len(t2):
+        pairs.append((t1[0][2], t2[0][2]))
+        del t1[0], t2[0]
     return pairs, [r for _, _, r in t1], [r for _, _, r in t2]
 
 def load_rows(ws, cn):
@@ -2151,7 +2199,8 @@ def rename_values(wb: openpyxl.Workbook, old_to_new: dict[str, str]) -> int:
     return changed
 
 
-def rc_add_changelog(wb: openpyxl.Workbook, sheet_name: str, text: str) -> None:
+def rc_add_changelog(wb: openpyxl.Workbook, sheet_name: str, text: str,
+                     date: datetime.datetime = datetime.datetime(2026, 9, 7)) -> None:
     ws = wb[sheet_name]
     # changelog sits right below the "Last update" row (row 5); newest first
     for row in ws.iter_rows(min_col=2, max_col=2):
@@ -2166,7 +2215,7 @@ def rc_add_changelog(wb: openpyxl.Workbook, sheet_name: str, text: str) -> None:
     dst.border = copy(src.border)
     dst.fill = copy(src.fill)
     dst.number_format = src.number_format
-    ws.cell(row=5, column=3).value = datetime.datetime(2026, 9, 7)
+    ws.cell(row=5, column=3).value = date
 
 
 def rc_run(path: str, old_to_new: dict[str, str], lang: str) -> None:
@@ -2184,6 +2233,283 @@ def rc_run(path: str, old_to_new: dict[str, str], lang: str) -> None:
 def main_rename_categories():
     rc_run("Targets_cn.xlsx", CN_OLD_TO_NEW, "CN")
     rc_run("Targets_en.xlsx", EN_OLD_TO_NEW, "EN")
+# ---------------------------------------------------------------------------
+# restructure-taxonomy: apply the Target Category Revision Rationale
+# (18 -> 16 categories, CN and EN in sync, ~553 rows relabeled):
+#   环境质量 -> 生态保护 | delete 技术创新 (rows -> 能源效率)
+#   涉煤 + 过渡能源 -> 化石能源 (12 nuclear rows -> 非化石能源)
+#   可再生能源 -> 非化石能源
+# Updates the category column of all data sheets, the category list in the
+# 说明/README legend, and the by-category count block of 概览/Overview.
+# ---------------------------------------------------------------------------
+CN_DATA_SHEETS = ['温室气体排放', '能源|电力', '工业', '建筑', '交通',
+                  '土地利用、土地利用变化和林业', '循环经济', '污染', '金融']
+EN_DATA_SHEETS = ['GHG Emissions', 'Energy|Power', 'Industry', 'Buildings',
+                  'Transport', 'LULUCF', 'Circular Economy', 'Pollution', 'Finance']
+
+CN_TXN = {
+    'rename': {'环境质量': '生态保护', '技术创新': '能源效率', '可再生能源': '非化石能源'},
+    'merge': ({'过渡能源', '涉煤'}, '化石能源', '核电', '非化石能源'),
+}
+EN_TXN = {
+    'rename': {'Environmental quality': 'Ecological protection',
+               'Technology innovation': 'Energy efficiency',
+               'Renewable energy': 'Non-fossil energy'},
+    'merge': ({'Transitional energy', 'Coal-related'}, 'Fossil energy',
+              'nuclear', 'Non-fossil energy'),
+}
+
+CN_LEGEND_OLD = ['碳减排', '碳强度', '碳汇', '节能', '能源效率', '资源效率',
+                 '可再生能源', '电气化', '过渡能源', '涉煤', '生产导向',
+                 '工业转型', '技术创新', '污染控制', '环境质量', '循环利用',
+                 '绿色交通', '气候金融']
+CN_LEGEND_NEW = ['碳减排', '碳强度', '碳汇', '节能', '能源效率', '资源效率',
+                 '非化石能源', '电气化', '化石能源', '生产导向', '工业转型',
+                 '污染控制', '生态保护', '循环利用', '绿色交通', '气候金融']
+EN_LEGEND_OLD = ['Carbon reduction', 'Carbon intensity', 'Carbon sink',
+                 'Energy saving', 'Energy efficiency', 'Resource efficiency',
+                 'Renewable energy', 'Electrification', 'Transitional energy',
+                 'Coal-related', 'Production-oriented', 'Industrial transformation',
+                 'Technology innovation', 'Pollution control',
+                 'Environmental quality', 'Recycling', 'Green transportation',
+                 'Climate finance']
+EN_LEGEND_NEW = ['Carbon reduction', 'Carbon intensity', 'Carbon sink',
+                 'Energy saving', 'Energy efficiency', 'Resource efficiency',
+                 'Non-fossil energy', 'Electrification', 'Fossil energy',
+                 'Production-oriented', 'Industrial transformation',
+                 'Pollution control', 'Ecological protection', 'Recycling',
+                 'Green transportation', 'Climate finance']
+
+CN_OVERVIEW_OLD = ['碳减排', '碳强度', '碳汇', '污染控制', '节能', '能源效率',
+                   '资源效率', '可再生能源', '过渡能源', '电气化', '涉煤',
+                   '生产导向', '工业转型', '技术创新', '绿色交通', '环境质量',
+                   '循环利用', '气候金融']
+CN_OVERVIEW_NEW = ['碳减排', '碳强度', '碳汇', '污染控制', '节能', '能源效率',
+                   '资源效率', '非化石能源', '化石能源', '电气化', '生产导向',
+                   '工业转型', '绿色交通', '生态保护', '循环利用', '气候金融']
+EN_OVERVIEW_OLD = ['Carbon reduction', 'Carbon intensity', 'Carbon sink',
+                   'Pollution control', 'Energy saving', 'Energy efficiency',
+                   'Resource efficiency', 'Renewable energy', 'Transitional energy',
+                   'Electrification', 'Coal-related', 'Production-oriented',
+                   'Industrial transformation', 'Technology innovation',
+                   'Green transportation', 'Environmental quality', 'Recycling',
+                   'Climate finance']
+EN_OVERVIEW_NEW = ['Carbon reduction', 'Carbon intensity', 'Carbon sink',
+                   'Pollution control', 'Energy saving', 'Energy efficiency',
+                   'Resource efficiency', 'Non-fossil energy', 'Fossil energy',
+                   'Electrification', 'Production-oriented',
+                   'Industrial transformation', 'Green transportation',
+                   'Ecological protection', 'Recycling', 'Climate finance']
+
+TXN_CHANGELOG = {
+    'CN': '2026-09-09：按类别修订理由书（Target Category Revision Rationale）重组目标类别（18→16类）："环境质量"→"生态保护"；删除"技术创新"（6行并入"能源效率"）；"涉煤"+"过渡能源"合并为"化石能源"（其中12条核电目标并入"非化石能源"）；"可再生能源"→"非化石能源"。中英文同步，共553行。',
+    'EN': '2026-09-09: Restructured target categories per the Target Category Revision Rationale (18 → 16 categories): renamed "Environmental quality" → "Ecological protection"; removed "Technology innovation" (6 rows moved to "Energy efficiency"); merged "Coal-related" + "Transitional energy" into "Fossil energy" (12 nuclear rows moved to "Non-fossil energy"); renamed "Renewable energy" → "Non-fossil energy". CN and EN in sync; 553 rows relabeled.',
+}
+
+
+def txn_new_category(old, metric, txn):
+    rename, (srcs, dst, nuclear_kw, nuclear_dst) = txn['rename'], txn['merge']
+    if old in rename:
+        return rename[old]
+    if old in srcs:
+        if nuclear_kw in metric.lower():
+            return nuclear_dst
+        return dst
+    return None
+
+
+def txn_find_block(ws, col, first_label):
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(r, col).value == first_label:
+            return r
+    raise AssertionError(f'{ws.title}: block starting with {first_label!r} not found')
+
+
+def txn_check(path, sheets, txn, legend_old, overview_old, legend_sheet):
+    wb = openpyxl.load_workbook(path, read_only=True)
+    stats = Counter()
+    nuclear = []
+    for s in sheets:
+        ws = wb[s]
+        for r in range(2, ws.max_row + 1):
+            old = ws.cell(r, 8).value
+            metric = ws.cell(r, 2).value or ''
+            new = txn_new_category(old, metric, txn)
+            if new:
+                stats[(old, new)] += 1
+                if old in txn['merge'][0] and txn['merge'][2] in metric.lower():
+                    nuclear.append((s, r))
+    wb.close()
+    for (old, new), k in sorted(stats.items()):
+        print(f'  {old} -> {new}: {k}')
+    print(f'  nuclear rows rerouted to {txn["merge"][3]}: {len(nuclear)}')
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb[legend_sheet]
+    start = txn_find_block(ws, 3, legend_old[0])
+    for i, lab in enumerate(legend_old):
+        got = ws.cell(start + i, 3).value
+        assert got == lab, f'legend mismatch {path} r{start+i}: {got!r} != {lab!r}'
+    ov = wb['概览' if legend_sheet == '说明' else 'Overview']
+    ostart = txn_find_block(ov, 17, overview_old[0])
+    for i, lab in enumerate(overview_old):
+        got = ov.cell(ostart + i, 17).value
+        assert got == lab, f'overview mismatch {path} r{ostart+i}: {got!r} != {lab!r}'
+    wb.close()
+    print(f'  legend + overview blocks verified ({len(legend_old)} entries)')
+    return stats
+
+
+def txn_rewrite_legend(ws, old_list, new_list):
+    start = txn_find_block(ws, 3, old_list[0])
+    for i, lab in enumerate(old_list):
+        got = ws.cell(start + i, 3).value
+        assert got == lab, f'{ws.title} r{start+i}: got {got!r} want {lab!r}'
+    for i, lab in enumerate(new_list):
+        ws.cell(start + i, 3).value = lab
+    for i in range(len(new_list), len(old_list)):
+        ws.cell(start + i, 3).value = None
+
+
+def txn_rewrite_overview(ws, old_list, new_list, txn):
+    rename = txn['rename']
+    srcs, dst, _, _ = txn['merge']
+    start = txn_find_block(ws, 17, old_list[0])
+    formulas = {}
+    for i, lab in enumerate(old_list):
+        got = ws.cell(start + i, 17).value
+        assert got == lab, f'{ws.title} r{start+i}: got {got!r} want {lab!r}'
+        formulas[lab] = ws.cell(start + i, 18).value
+    merged = None
+    for src in sorted(srcs, key=old_list.index):
+        f = formulas[src].replace(f'"{src}"', f'"{dst}"')
+        merged = f if merged is None else merged + '+' + f.lstrip('=')
+    renamed_in_list = {new: old for old, new in rename.items()
+                       if old in formulas and new not in formulas}
+    out = []
+    for lab in new_list:
+        if lab == dst:
+            out.append((lab, merged))
+        elif lab in renamed_in_list:
+            old = renamed_in_list[lab]
+            out.append((lab, formulas[old].replace(f'"{old}"', f'"{lab}"')))
+        else:
+            out.append((lab, formulas[lab]))
+    for i, (lab, f) in enumerate(out):
+        ws.cell(start + i, 17).value = lab
+        ws.cell(start + i, 18).value = f
+    for i in range(len(out), len(old_list)):
+        ws.cell(start + i, 17).value = None
+        ws.cell(start + i, 18).value = None
+
+
+def txn_apply(path, sheets, txn, legend_old, legend_new, overview_old,
+              overview_new, legend_sheet, changelog_text):
+    backup = path.replace('.xlsx', '.pre_taxonomy.bak')
+    shutil.copy2(path, backup)
+    wb = openpyxl.load_workbook(path)
+    n = 0
+    for s in sheets:
+        ws = wb[s]
+        for r in range(2, ws.max_row + 1):
+            c = ws.cell(r, 8)
+            new = txn_new_category(c.value, ws.cell(r, 2).value or '', txn)
+            if new:
+                c.value = new
+                n += 1
+    txn_rewrite_legend(wb[legend_sheet], legend_old, legend_new)
+    txn_rewrite_overview(wb['概览' if legend_sheet == '说明' else 'Overview'],
+                         overview_old, overview_new, txn)
+    rc_add_changelog(wb, legend_sheet, changelog_text,
+                     date=datetime.datetime(2026, 9, 9))
+    wb.save(path)
+    print(f'{path}: {n} category cells relabeled; legend + overview updated; '
+          f'changelog added (backup {backup})')
+
+
+def main_restructure_taxonomy():
+    apply = '--apply' in sys.argv
+    print(f'{CN_FILE}:')
+    txn_check(CN_FILE, CN_DATA_SHEETS, CN_TXN, CN_LEGEND_OLD, CN_OVERVIEW_OLD, '说明')
+    print(f'{EN_FILE}:')
+    txn_check(EN_FILE, EN_DATA_SHEETS, EN_TXN, EN_LEGEND_OLD, EN_OVERVIEW_OLD, 'README')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    txn_apply(CN_FILE, CN_DATA_SHEETS, CN_TXN, CN_LEGEND_OLD, CN_LEGEND_NEW,
+              CN_OVERVIEW_OLD, CN_OVERVIEW_NEW, '说明', TXN_CHANGELOG['CN'])
+    txn_apply(EN_FILE, EN_DATA_SHEETS, EN_TXN, EN_LEGEND_OLD, EN_LEGEND_NEW,
+              EN_OVERVIEW_OLD, EN_OVERVIEW_NEW, 'README', TXN_CHANGELOG['EN'])
+# ---------------------------------------------------------------------------
+# clear-changelog: remove the per-revision changelog rows between the
+# "Last update" row and "Source information" in 说明/README, leaving
+# exactly one blank row in between.
+# ---------------------------------------------------------------------------
+CL_SPECS = [
+    (CN_FILE, '说明', '最后更新', '数据来源说明'),
+    (EN_FILE, 'README', 'Last update', 'Source information'),
+]
+
+
+def cl_find_row(ws, text, col=2):
+    for r in range(1, ws.max_row + 1):
+        if ws.cell(r, col).value == text:
+            return r
+    return None
+
+
+def cl_preview(path, legend_sheet, last_update, source_info):
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb[legend_sheet]
+    a = cl_find_row(ws, last_update)
+    b = cl_find_row(ws, source_info)
+    wb.close()
+    assert a and b, f'{path}: {last_update!r} or {source_info!r} row not found'
+    return a, b, b - a - 1
+
+
+def cl_clear(path, legend_sheet, last_update, source_info):
+    wb = openpyxl.load_workbook(path)
+    ws = wb[legend_sheet]
+    a = cl_find_row(ws, last_update)
+    b = cl_find_row(ws, source_info)
+    assert a and b, f'{path}: {last_update!r} or {source_info!r} row not found'
+    gap, delta = b - a - 1, 1 - (b - a - 1)
+    wb.close()
+    if delta == 0:
+        print(f'{path}: one blank row already present')
+        return
+    backup = path.replace('.xlsx', '.pre_clearlog.bak')
+    shutil.copy2(path, backup)
+    wb = openpyxl.load_workbook(path)
+    ws = wb[legend_sheet]
+    a = cl_find_row(ws, last_update)
+    from openpyxl.worksheet.cell_range import MultiCellRange
+    if delta < 0:
+        ws.delete_rows(a + 1, -delta)
+    else:
+        ws.insert_rows(a + 1, delta)
+    # insert_rows/delete_rows do not move merged ranges; shift them by hand
+    rebuilt = MultiCellRange()
+    for mr in ws.merged_cells.ranges:
+        assert not (mr.min_row <= a < mr.max_row), f'merge {mr} overlaps gap rows'
+        if mr.min_row > a:
+            mr.shift(row_shift=delta)
+        rebuilt.add(mr)
+    ws.merged_cells = rebuilt
+    wb.save(path)
+    print(f'{path}: {gap} rows -> 1 blank row between r{a} and r{b} (backup {backup})')
+
+
+def main_clear_changelog():
+    apply = '--apply' in sys.argv
+    for path, sheet, last_update, source_info in CL_SPECS:
+        a, b, gap = cl_preview(path, sheet, last_update, source_info)
+        print(f'{path} {sheet}: {gap} rows between r{a} and r{b} (target: 1 blank)')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    for path, sheet, last_update, source_info in CL_SPECS:
+        cl_clear(path, sheet, last_update, source_info)
 # ---------------------------------------------------------------------------
 # unify-percent: EN '<digit> percent' -> '<digit>%' (originally unify_percent_en.py)
 # ---------------------------------------------------------------------------
@@ -2428,6 +2754,400 @@ def main_add_ip2604():
         changelog_text=CHANGELOG_CN,
         source_row_values=CN_SOURCE,
     )
+# ---------------------------------------------------------------------------
+# wording-fix: wording vs 政策原文 (CN first, then EN mirrors CN) 2026-09-09
+# ---------------------------------------------------------------------------
+WCOL = {'metric': 2, 'direction': 3, 'mag': 4, 'baseline': 5, 'sentence': 10}
+
+# (文件, 表名, 行号, 列, 方式, 旧值, 新值)
+# 方式: set=整格覆盖; replace=子串替换(必须命中)
+WORDING_FIXES = [
+    # ---- CN: 先确保中文与政策原文一致 ----
+    # O1802 蓝天保卫战三年行动计划: 原文不带"市/省"后缀
+    ('cn', '能源|电力', 8, 'metric', 'set',
+     '上海市、江苏省、浙江省、安徽省及汾渭平原地区煤炭消费总量',
+     '上海、江苏、浙江、安徽及汾渭平原煤炭消费总量'),
+    ('cn', '能源|电力', 50, 'metric', 'replace',
+     '北京市、天津市、河北省、山东省、河南省及珠三角区域',
+     '北京、天津、河北、山东、河南及珠三角区域'),
+    ('cn', '能源|电力', 50, 'sentence', 'replace',
+     '北京市、天津市、河北省、山东省、河南省及珠三角区域',
+     '北京、天津、河北、山东、河南及珠三角区域'),
+    # FYP1603 原文为"中部8省"/"现役"
+    ('cn', '能源|电力', 12, 'metric', 'replace', '中部八省', '中部8省'),
+    ('cn', '能源|电力', 12, 'sentence', 'replace', '中部八省', '中部8省'),
+    ('cn', '能源|电力', 366, 'metric', 'replace', '在役', '现役'),
+    ('cn', '能源|电力', 366, 'sentence', 'replace', '在役', '现役'),
+    # O1602 钢铁去产能: 原文为"1亿—1.5亿吨"(长破折号)
+    ('cn', '工业', 22, 'sentence', 'replace', '1亿至1.5亿吨', '1亿—1.5亿吨'),
+    ('cn', '工业', 22, 'mag', 'replace', '1亿-1.5亿吨', '1亿—1.5亿吨'),
+    # HL1902 国家方案: 原文为"工业生产过程的氧化亚氮排放稳定在2005年的水平上"
+    ('cn', '污染', 46, 'metric', 'set',
+     '氮氧化物（NOₓ）工业排放', '氧化亚氮（N₂O）工业排放'),
+    ('cn', '污染', 46, 'direction', 'set', '保持在', '稳定在'),
+    ('cn', '污染', 46, 'sentence', 'replace', '二氧化氮', '氧化亚氮'),
+    ('cn', '污染', 46, 'sentence', 'replace', '将保持在', '将稳定在'),
+    # ---- EN: 英文以中文为准 ----
+    ('en', 'Energy|Power', 49, 'mag', 'set', '10% compared with 2015', '10%'),
+    ('en', 'Energy|Power', 8, 'mag', 'set', '5% compared with 2015', 'about 5%'),
+    ('en', 'Energy|Power', 50, 'mag', 'set', '10%', 'about 10%'),
+    ('en', 'Energy|Power', 52, 'metric', 'set',
+     'proportion of large refineries in total oil refining',
+     'share of refining capacity of the 10 million tonne class'),
+    ('en', 'Energy|Power', 52, 'mag', 'set', '55%', 'about 55%'),
+    ('en', 'Energy|Power', 244, 'mag', 'set', 'nearly 100%', 'basically completed'),
+    ('en', 'Energy|Power', 244, 'sentence', 'set',
+     'By the end of 2025, coal-fired boilers of 35 tons of steam per hour or less and all types of coal-fired facilities will be basically eliminated.',
+     'By the end of 2025, in the plain areas of the key regions for air pollution control, bulk coal will be basically cleared, and coal-fired boilers of 35 tons of steam per hour or less and all types of coal-fired facilities will be basically eliminated.'),
+    ('en', 'Pollution', 46, 'metric', 'set',
+     'nitrogen oxides (NOₓ) industrial emissions',
+     'nitrous oxide (N₂O) industrial emissions'),
+    ('en', 'Pollution', 46, 'mag', 'set', None, '2005 level'),
+    ('en', 'Pollution', 46, 'sentence', 'replace', 'NO2', 'nitrous oxide (N2O)'),
+    ('en', 'Pollution', 46, 'sentence', 'replace',
+     'remain stable as that in 2005', 'remain stable at the 2005 level'),
+    ('en', 'Pollution', 46, 'sentence', 'replace', 'from the agriculture',
+     'from agriculture'),
+    ('en', 'Circular Economy', 139, 'metric', 'set',
+     'standardized disposal rate of hazardous waste in Class',
+     'standardized disposal rate of hazardous waste in Class I and II maintenance enterprises across the country'),
+    ('en', 'Buildings', 9, 'mag', 'set', 'no more than 2000',
+     'no more than 2000 units'),
+]
+
+
+def check_wording(fname):
+    wb = openpyxl.load_workbook(fname, read_only=True)
+    n = 0
+    for lang, sheet, row, col, mode, old, new in WORDING_FIXES:
+        if lang != ('cn' if 'cn' in fname else 'en'):
+            continue
+        ws = wb[sheet]
+        cur = ws.cell(row=row, column=WCOL[col]).value
+        if mode == 'set':
+            ok = (cur == old)
+        else:
+            ok = isinstance(cur, str) and old in cur
+        if not ok:
+            print(f'ASSERT FAIL {fname} {sheet} r{row} {col}: '
+                  f'got {cur!r} want contains/set {old!r}')
+            wb.close()
+            sys.exit(1)
+        n += 1
+        print(f'OK {fname} {sheet} r{row} {col} [{new[:24]!r}]')
+    wb.close()
+    return n
+
+
+def main_wording_fix():
+    apply = '--apply' in sys.argv
+    n = check_wording(CN_FILE) + check_wording(EN_FILE)
+    print(f'{n} wording fixes verified')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    for fname in (CN_FILE, EN_FILE):
+        shutil.copy(fname, fname.replace('.xlsx', '.pre_wording.bak'))
+        wb = openpyxl.load_workbook(fname)
+        for lang, sheet, row, col, mode, old, new in WORDING_FIXES:
+            if lang != ('cn' if 'cn' in fname else 'en'):
+                continue
+            ws = wb[sheet]
+            cell = ws.cell(row=row, column=WCOL[col])
+            if mode == 'set':
+                cell.value = new
+            else:
+                cell.value = cell.value.replace(old, new)
+        # EN README legend: 'Direction' merge overran the Target value row.
+        # Mirror CN 说明: single 'Direction' cell, 'Target value' merged B36:B42,
+        # and the two category/accountability blocks shifted down one row.
+        if 'en' in fname:
+            ws = wb['README']
+            for rng in ('B35:B41', 'B42:B60', 'B61:B66'):
+                ws.unmerge_cells(rng)
+            ws['B36'] = 'Target value'
+            wb_c = openpyxl.load_workbook(CN_FILE)
+            copy_style(wb_c['说明']['B36'], ws['B36'])
+            wb_c.close()
+            for rng in ('B36:B42', 'B43:B61', 'B62:B67'):
+                ws.merge_cells(rng)
+            print(f'{fname}: README legend fixed')
+        wb.save(fname)
+        wb.close()
+        print(f'{fname}: applied and saved')
+
+
+# ---------------------------------------------------------------------------
+# fix-period: 来源 sheet 覆盖时期 column — letter codes -> period values
+# (action-domain codes A/B.x/C.x/D.x had been mistakenly entered there)
+# ---------------------------------------------------------------------------
+PERIOD_FIXES = {
+    14: '十五五', 15: '十五五',
+    177: '十五五', 178: '十五五', 179: '十五五', 180: '十五五', 181: '十五五',
+    182: '十五五', 183: '十五五', 184: '十五五', 185: '十五五', 186: '十五五',
+    187: '十五五',
+    270: '-', 318: '-',
+    398: '2026-2030', 399: '2026-2028', 400: '2026-2028',
+    459: '-', 460: '十五五',
+    470: '-', 471: '-', 472: '2026-2030', 473: '-', 474: '-',
+    494: '十五五',
+}
+PERIOD_OLD = {
+    14: 'A', 15: 'A',
+    177: 'B.1', 178: 'B.5, C.6', 179: 'B.4', 180: 'B.2', 181: 'B.5',
+    182: 'B.1', 183: 'D.2', 184: 'A', 185: 'D.3', 186: 'B.1', 187: 'B.1',
+    270: 'B.4', 318: 'B.4',
+    398: 'C.4', 399: 'B.2, B.1', 400: 'B.1',
+    459: 'B.1', 460: 'B.4',
+    470: 'B.4', 471: 'B.1', 472: 'B.1', 473: 'B.2', 474: 'A.2',
+    494: 'B.3',
+}
+
+
+def main_fix_period():
+    apply = '--apply' in sys.argv
+    wb = openpyxl.load_workbook(CN_FILE, read_only=True)
+    ws = wb['来源']
+    for row, old in sorted(PERIOD_OLD.items()):
+        cur = ws.cell(row=row, column=10).value
+        code = ws.cell(row=row, column=2).value
+        if cur != old:
+            print(f'ASSERT FAIL {CN_FILE} 来源 r{row} [{code}]: '
+                  f'got {cur!r} want {old!r}')
+            wb.close()
+            sys.exit(1)
+        print(f'OK {CN_FILE} 来源 r{row} [{code}] {old!r} -> {PERIOD_FIXES[row]!r}')
+    wb.close()
+    print(f'{len(PERIOD_FIXES)} period fixes verified')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    shutil.copy(CN_FILE, CN_FILE.replace('.xlsx', '.pre_period.bak'))
+    wb = openpyxl.load_workbook(CN_FILE)
+    ws = wb['来源']
+    for row, new in PERIOD_FIXES.items():
+        ws.cell(row=row, column=10).value = new
+    wb.save(CN_FILE)
+    wb.close()
+    print(f'{CN_FILE}: applied and saved')
+
+
+# ---------------------------------------------------------------------------
+# wording2: (1) AP1802 r268 metric 按原文修正; (2) 约/左右 hedge 以中文为准修正英文;
+# (3) O1802 r8 baseline 与原文统一 (2026-09-09)
+# ---------------------------------------------------------------------------
+W2_SPECIALS = [
+    # (1) AP1802 原文为"煤炭占能源消费总量比重"（CN/EN 政策原文句均已为 总量/total）
+    ('cn', '能源|电力', 268, 'metric', '煤炭占一次能源消费比重',
+     '煤炭占能源消费总量比重'),
+    ('en', 'Energy|Power', 268, 'metric', 'proportion of coal in primary energy consumption',
+     'proportion of coal in total energy consumption'),
+    # (3) O1802 r8 baseline=2015 为推断值，原文无基线
+    ('cn', '能源|电力', 8, 'baseline', 2015, None),
+    ('en', 'Energy|Power', 8, 'baseline', 2015, None),
+    # (2) GO1603 r321: 原文为"提高约1.5%"（非百分点）——中文按原文修正，英文以中文为准
+    ('cn', '能源|电力', 321, 'mag', '约1.5个百分点', '约1.5%'),
+    ('en', 'Energy|Power', 321, 'mag', '1.5%', 'about 1.5%'),
+    # 百分点 vs %：英文以中文为准（percentage points 为既有译法，见 Energy|Power r493 等）
+    ('en', 'Energy|Power', 469, 'mag', '20%', '20 percentage points'),
+    ('en', 'Industry', 15, 'mag', 'more than 3%', 'more than 3 percentage points'),
+    ('en', 'Transport', 49, 'mag', '5%', '5 percentage points'),
+    ('en', 'Circular Economy', 128, 'mag', '3%', '3 percentage points'),
+    ('en', 'Circular Economy', 157, 'mag', '10%', '10 percentage points'),
+    # 能源 r106: 补 about 并顺带修正同格双空格笔误
+    ('en', 'Energy|Power', 106, 'mag', '5000  kilometers', 'about 5000 kilometers'),
+]
+
+# CN 带 约/左右 而 EN 无 hedge 的行（specials 已处理的 106/321 除外），EN 前缀 'about '
+HEDGE_ADD_ROWS = {
+    '温室气体排放': [2, 3, 63, 76, 83, 84, 86, 88, 89, 90, 92, 96, 97,
+                     108, 110, 111, 112, 113],
+    '能源|电力': [13, 75, 76, 97, 104, 130, 134, 160, 175, 177, 195, 197,
+                  198, 199, 200, 234, 235, 286, 288, 315, 320, 322, 331,
+                  353, 361, 371, 377, 382, 383, 388, 390, 397, 403, 407,
+                  409, 412, 415, 427, 434, 436],
+    '工业': [60, 61, 62, 63, 65, 91, 92, 168, 169],
+    '交通': [71, 73],
+    '土地利用、土地利用变化和林业': [10, 67, 68, 70, 88, 90, 176],
+    '循环经济': [46, 63, 78, 96, 103, 196],
+    '金融': [2, 3, 6, 9, 10, 14, 15, 17, 18, 19],
+}
+# EN 带 hedge 而 CN 无的行，去掉 EN 前缀 hedge 词
+HEDGE_STRIP_ROWS = {'能源|电力': [74]}
+HEDGE_EN_TOK = r'\b(?:about|around|approximately|roughly|nearly|almost)\b'
+
+
+def w2_scan(wcn, wen):
+    """Scan the post-special state for CN/EN hedge asymmetry."""
+    adds, strips = {}, {}
+    for cns, ens in zip(CN_DATA_SHEETS, EN_DATA_SHEETS):
+        wsc, wse = wcn[cns], wen[ens]
+        add_rows, strip_rows = [], []
+        for r in range(2, wsc.max_row + 1):
+            mc = wsc.cell(row=r, column=4).value
+            me = wse.cell(row=r, column=4).value
+            hc = isinstance(mc, str) and ('约' in mc or '左右' in mc)
+            he = isinstance(me, str) and re.search(HEDGE_EN_TOK, me) is not None
+            if not hc and not he:
+                continue
+            dc, de = wsc.cell(row=r, column=11).value, wse.cell(row=r, column=11).value
+            yc, ye = wsc.cell(row=r, column=1).value, wse.cell(row=r, column=1).value
+            if dc != de or yc != ye:
+                print(f'ALIGN FAIL {cns} r{r}: CN ({yc!r},{dc!r}) vs EN ({ye!r},{de!r})')
+                sys.exit(1)
+            if hc and not he:
+                add_rows.append(r)
+            elif he and not hc:
+                strip_rows.append(r)
+        if add_rows:
+            adds[cns] = add_rows
+        if strip_rows:
+            strips[cns] = strip_rows
+    return adds, strips
+
+
+def check_wording2():
+    n = 0
+    for fname, lang in ((CN_FILE, 'cn'), (EN_FILE, 'en')):
+        wb = openpyxl.load_workbook(fname, read_only=True)
+        for l, sheet, row, col, old, new in W2_SPECIALS:
+            if l != lang:
+                continue
+            cur = wb[sheet].cell(row=row, column=WCOL[col]).value
+            if cur != old:
+                print(f'ASSERT FAIL {fname} {sheet} r{row} {col}: '
+                      f'got {cur!r} want {old!r}')
+                wb.close()
+                sys.exit(1)
+            print(f'OK {fname} {sheet} r{row} {col}: {old!r} -> {new!r}')
+            n += 1
+        wb.close()
+    wcn = openpyxl.load_workbook(CN_FILE)
+    wen = openpyxl.load_workbook(EN_FILE)
+    for l, sheet, row, col, old, new in W2_SPECIALS:
+        (wcn if l == 'cn' else wen)[sheet].cell(row=row, column=WCOL[col]).value = new
+    adds, strips = w2_scan(wcn, wen)
+    wcn.close()
+    wen.close()
+    exp_add = {s: set(rs) for s, rs in HEDGE_ADD_ROWS.items()}
+    exp_strip = {s: set(rs) for s, rs in HEDGE_STRIP_ROWS.items()}
+    if {s: set(rs) for s, rs in adds.items()} != exp_add or \
+            {s: set(rs) for s, rs in strips.items()} != exp_strip:
+        print(f'SCAN MISMATCH: adds={adds!r} strips={strips!r}')
+        sys.exit(1)
+    print(f'{sum(map(len, HEDGE_ADD_ROWS.values()))} hedge-add rows + '
+          f'{sum(map(len, HEDGE_STRIP_ROWS.values()))} hedge-strip rows verified')
+    return n
+
+
+def main_wording2():
+    apply = '--apply' in sys.argv
+    n = check_wording2()
+    print(f'{n} wording2 fixes verified')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    for fname in (CN_FILE, EN_FILE):
+        shutil.copy(fname, fname.replace('.xlsx', '.pre_wording2.bak'))
+    wcn = openpyxl.load_workbook(CN_FILE)
+    wen = openpyxl.load_workbook(EN_FILE)
+    for l, sheet, row, col, old, new in W2_SPECIALS:
+        (wcn if l == 'cn' else wen)[sheet].cell(row=row, column=WCOL[col]).value = new
+    adds, strips = w2_scan(wcn, wen)
+    for cns, rows in adds.items():
+        wse = wen[EN_DATA_SHEETS[CN_DATA_SHEETS.index(cns)]]
+        for r in rows:
+            cell = wse.cell(row=r, column=4)
+            cell.value = 'about ' + str(cell.value)
+    for cns, rows in strips.items():
+        wse = wen[EN_DATA_SHEETS[CN_DATA_SHEETS.index(cns)]]
+        for r in rows:
+            cell = wse.cell(row=r, column=4)
+            cell.value = re.sub(r'^(?:about|around|approximately|roughly|nearly|almost)\s+',
+                                '', str(cell.value))
+    wcn.save(CN_FILE)
+    wen.save(EN_FILE)
+    wcn.close()
+    wen.close()
+    print(f'{CN_FILE}: applied and saved')
+    print(f'{EN_FILE}: applied and saved')
+
+
+# ---------------------------------------------------------------------------
+# fix-double-space: collapse double-space typos in EN metric/mag/sentence cells
+# (2026-09-09; CN sheets scanned clean)
+# ---------------------------------------------------------------------------
+DBL_ROWS = {
+    ('Buildings', 2): [13, 14, 85, 86],
+    ('Buildings', 4): [41, 58],
+    ('Circular Economy', 2): [7, 10, 18, 21, 58, 59, 60, 62, 63, 80, 81, 92,
+                              93, 99, 100, 101, 102, 108, 115, 118, 131, 136,
+                              146, 153, 157, 158, 159, 160, 163, 164, 165, 171,
+                              178, 185, 186, 188],
+    ('Circular Economy', 4): [5, 6, 45, 57, 61, 62, 67, 68, 69, 111, 112, 194],
+    ('Circular Economy', 10): [17, 97],
+    ('Energy|Power', 2): [53, 59, 60, 61, 62, 63, 64, 79, 80, 81, 82, 83, 84,
+                          85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 98,
+                          153, 157, 158, 190, 196, 208, 252, 253, 296, 297, 298,
+                          309, 310, 311, 317, 363, 374],
+    ('Energy|Power', 4): [4, 16, 124, 126, 127, 211, 233, 242, 243, 306, 308,
+                          317, 338, 362],
+    ('Energy|Power', 10): [116],
+    ('GHG Emissions', 2): [90],
+    ('Industry', 2): [2, 30, 36, 38, 39, 42, 43, 45, 63, 105, 106, 166, 167],
+    ('Industry', 4): [2, 4, 6, 24, 26, 27, 28, 29, 31, 49, 123, 139, 140,
+                      163, 167, 171],
+    ('Industry', 10): [55, 98],
+    ('LULUCF', 2): [166],
+    ('LULUCF', 4): [28, 29, 83, 84, 136, 147, 148, 149, 191, 199],
+    ('LULUCF', 10): [27],
+    ('Pollution', 4): [4, 5, 11, 12, 13, 14, 16, 19, 65, 68],
+    ('Transport', 2): [17, 31, 48, 52],
+}
+# Industry r98: the double space hides a duplicated word ("items of  of ...")
+DBL_SPECIAL = {('Industry', 10, 98): ('of of', 'of')}
+
+
+def dbl_scan(fname):
+    wb = openpyxl.load_workbook(fname, read_only=True)
+    found = {}
+    for s in EN_DATA_SHEETS:
+        ws = wb[s]
+        for r, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            for col, v in enumerate(row[:13], start=1):
+                if isinstance(v, str) and '  ' in v:
+                    found.setdefault((s, col), []).append(r)
+    wb.close()
+    return found
+
+
+def main_fix_double_space():
+    apply = '--apply' in sys.argv
+    found = dbl_scan(EN_FILE)
+    exp = {k: set(v) for k, v in DBL_ROWS.items()}
+    if {k: set(v) for k, v in found.items()} != exp:
+        print(f'SCAN MISMATCH: found={found!r}')
+        sys.exit(1)
+    print(f'{sum(len(v) for v in DBL_ROWS.values())} double-space cells verified '
+          f'({EN_FILE})')
+    if not apply:
+        print('DRY RUN OK (use --apply to write)')
+        return
+    shutil.copy(EN_FILE, EN_FILE.replace('.xlsx', '.pre_dblspace.bak'))
+    wb = openpyxl.load_workbook(EN_FILE)
+    for (sheet, col), rows in DBL_ROWS.items():
+        ws = wb[sheet]
+        for r in rows:
+            cell = ws.cell(row=r, column=col)
+            v = ' '.join(str(cell.value).split())
+            if (sheet, col, r) in DBL_SPECIAL:
+                v = v.replace(*DBL_SPECIAL[(sheet, col, r)])
+            cell.value = v
+    wb.save(EN_FILE)
+    wb.close()
+    print(f'{EN_FILE}: applied and saved')
+
+
 COMMANDS = {
     'compare': main_compare,
     'data': main_data,
@@ -2438,8 +3158,14 @@ COMMANDS = {
     'direction3': main_direction3,
     'direction3b': main_direction3b,
     'rename-categories': main_rename_categories,
+    'restructure-taxonomy': main_restructure_taxonomy,
+    'clear-changelog': main_clear_changelog,
     'unify-percent': main_unify_percent,
     'add-ip2604': main_add_ip2604,
+    'wording-fix': main_wording_fix,
+    'fix-period': main_fix_period,
+    'wording2': main_wording2,
+    'fix-double-space': main_fix_double_space,
 }
 
 def main():

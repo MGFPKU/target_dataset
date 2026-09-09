@@ -140,8 +140,14 @@ default; add `--apply` to write (a `.bak` backup is made first).
     python revisions.py direction3 --apply     # direction/value wording vs 政策原文
     python revisions.py direction3b --apply    # direction/value wording vs 政策原文 (round 3b)
     python revisions.py rename-categories      # drop the 目标/target suffix (writes immediately)
+    python revisions.py restructure-taxonomy --apply  # 18 -> 16 category taxonomy per Revision Rationale
+    python revisions.py clear-changelog --apply       # remove changelog rows from 说明/README, leaving one blank row
     python revisions.py unify-percent          # EN "X percent" -> "X%" (writes immediately)
     python revisions.py add-ip2604             # add the IP2604 target (writes immediately)
+    python revisions.py wording-fix --apply    # wording vs 政策原文 (CN first, EN mirrors CN)
+    python revisions.py fix-period --apply     # 来源 sheet: letter codes -> period values
+    python revisions.py wording2 --apply       # AP1802 metric + 约/左右 hedge alignment + O1802 baseline
+    python revisions.py fix-double-space --apply  # EN: collapse double-space typos in metric/mag/sentence
 
 Run `python revisions.py` without arguments for the full subcommand help.
 When github.com is unreachable, `push_via_api.py` pushes commits through the
