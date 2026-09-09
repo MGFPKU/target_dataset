@@ -4,7 +4,8 @@
 Replicates tree/blob/commit objects exactly, so remote SHAs equal local SHAs.
 Pushes the whole unpushed range (oldest first), one commit per API round.
 Then checks the dataset Release assets (Targets_cn/en.xlsx, served to the
-website) against the local files; pass --sync-release to upload when stale.
+website, plus Data_sources.zip) against the local files; pass --sync-release
+to upload when stale.
 GitHub keeps timezone offsets and message bytes as sent; the message must be
 extracted verbatim from the raw commit object (git log --format=%B adds a
 trailing newline, which breaks sha equality).
@@ -125,7 +126,15 @@ def commits_to_push(repo, d, head):
     return todo[::-1], sha
 
 
-RELEASE_ASSETS = ('Targets_cn.xlsx', 'Targets_en.xlsx')
+RELEASE_ASSETS = ('Targets_cn.xlsx', 'Targets_en.xlsx', 'Data_sources.zip')
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def release_sync(repo, repo_dir, upload):
@@ -143,7 +152,7 @@ def release_sync(repo, repo_dir, upload):
         if not os.path.isfile(path):
             print(f'RELEASE SYNC {name}: local file missing, skipping')
             continue
-        local = hashlib.sha256(open(path, 'rb').read()).hexdigest()
+        local = file_sha256(path)
         asset = next((a for a in rel['assets'] if a['name'] == name), None)
         remote = (asset.get('digest') or '').split(':', 1)[-1] if asset else ''
         if remote == local:
