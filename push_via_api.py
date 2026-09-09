@@ -68,23 +68,30 @@ def push_repo(repo, repo_dir, commit_sha, changed_paths, deleted_paths=()):
     tree_sha = meta['tree']
 
     if changed_paths or deleted_paths:
-        entries = []
         base_tree = git(repo_dir, 'rev-parse', f'{meta["parents"][0]}^{{tree}}').decode().strip()
-        for path in changed_paths:
-            blob_sha = git(repo_dir, 'rev-parse', f'{commit_sha}:{path}').decode().strip()
-            content = git(repo_dir, 'cat-file', 'blob', f'{commit_sha}:{path}')
-            got = api('POST', f'/repos/{repo}/git/blobs',
-                      {'content': base64.b64encode(content).decode(), 'encoding': 'base64'})['sha']
-            assert got == blob_sha, f'blob sha mismatch {path}: {got} != {blob_sha}'
-            print(f'  blob {path}: {blob_sha[:10]} ok')
-            entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob_sha})
-        for path in deleted_paths:
-            entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
-            print(f'  delete {path}')
-        tree_sha = api('POST', f'/repos/{repo}/git/trees',
-                       {'base_tree': base_tree, 'tree': entries})['sha']
+        if changed_paths:
+            entries = []
+            for path in changed_paths:
+                blob_sha = git(repo_dir, 'rev-parse', f'{commit_sha}:{path}').decode().strip()
+                content = git(repo_dir, 'cat-file', 'blob', f'{commit_sha}:{path}')
+                got = api('POST', f'/repos/{repo}/git/blobs',
+                          {'content': base64.b64encode(content).decode(), 'encoding': 'base64'})['sha']
+                assert got == blob_sha, f'blob sha mismatch {path}: {got} != {blob_sha}'
+                print(f'  blob {path}: {blob_sha[:10]} ok')
+                entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob_sha})
+            tree_sha = api('POST', f'/repos/{repo}/git/trees',
+                           {'base_tree': base_tree, 'tree': entries})['sha']
+            print(f'  tree (blobs): {tree_sha[:10]} ok')
+            base_tree = tree_sha
+        if deleted_paths:
+            # separate round: mixing add+delete entries in one create-tree
+            # call makes GitRPC fail with 422 BadObjectState
+            del_entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'sha': None}
+                           for p in deleted_paths]
+            tree_sha = api('POST', f'/repos/{repo}/git/trees',
+                           {'base_tree': base_tree, 'tree': del_entries})['sha']
+            print(f'  tree (deletes): {tree_sha[:10]} ok')
         assert tree_sha == meta['tree'], f'tree sha mismatch: {tree_sha} != {meta["tree"]}'
-        print(f'  tree: {tree_sha[:10]} ok')
 
     new_sha = api('POST', f'/repos/{repo}/git/commits', {
         'message': meta['message'], 'tree': tree_sha,
