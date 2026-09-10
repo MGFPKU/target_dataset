@@ -124,15 +124,15 @@ The script produces a table with the following columns:
 
 The repository also contains the curated climate-target dataset:
 
-- `Targets_cn.xlsx` — Chinese target records (data sheets + 来源 sheet + 说明 sheet)
-- `Targets_en.xlsx` — English version, row-aligned with the Chinese sheets
+- `China_Climate_Target_Tracker_cn.xlsx` — Chinese target records (data sheets + 来源 sheet + 说明 sheet)
+- `China_Climate_Target_Tracker_en.xlsx` — English version, row-aligned with the Chinese sheets
 
 ### Update cycle
 
 The dataset is updated on a roughly two-week cycle. Candidate policy
 documents are scraped from source websites, new or changed target sentences
 are extracted, and each candidate is manually reviewed before acceptance.
-Accepted updates are committed to `Targets_cn.xlsx` / `Targets_en.xlsx` and
+Accepted updates are committed to `China_Climate_Target_Tracker_cn.xlsx` / `China_Climate_Target_Tracker_en.xlsx` and
 uploaded to the latest GitHub Release, where the companion website picks
 them up.
 

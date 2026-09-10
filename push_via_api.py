@@ -3,8 +3,8 @@
 
 Replicates tree/blob/commit objects exactly, so remote SHAs equal local SHAs.
 Pushes the whole unpushed range (oldest first), one commit per API round.
-Then checks the dataset Release assets (Targets_cn/en.xlsx, served to the
-website, plus Data_sources.zip) against the local files; pass --sync-release
+Then checks the dataset Release assets (China_Climate_Target_Tracker_cn/en.xlsx,
+served to the website, plus Data_sources.zip) against the local files; pass --sync-release
 to upload when stale.
 GitHub keeps timezone offsets and message bytes as sent; the message must be
 extracted verbatim from the raw commit object (git log --format=%B adds a
@@ -126,7 +126,7 @@ def commits_to_push(repo, d, head):
     return todo[::-1], sha
 
 
-RELEASE_ASSETS = ('Targets_cn.xlsx', 'Targets_en.xlsx', 'Data_sources.zip')
+RELEASE_ASSETS = ('China_Climate_Target_Tracker_cn.xlsx', 'China_Climate_Target_Tracker_en.xlsx', 'Data_sources.zip')
 
 
 def file_sha256(path):

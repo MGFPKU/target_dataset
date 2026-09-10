@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Merged data-revision scripts for Targets_cn.xlsx / Targets_en.xlsx (2026-09).
+"""Merged data-revision scripts for China_Climate_Target_Tracker_cn.xlsx / China_Climate_Target_Tracker_en.xlsx (2026-09).
 
 Each step of the 2026-09 revision process is one subcommand. The fix
 subcommands run as a dry-run check by default and need --apply to write
@@ -35,12 +35,12 @@ from copy import copy
 import openpyxl
 from openpyxl.cell.cell import MergedCell
 
-CN_FILE = 'Targets_cn.xlsx'
-EN_FILE = 'Targets_en.xlsx'
+CN_FILE = 'China_Climate_Target_Tracker_cn.xlsx'
+EN_FILE = 'China_Climate_Target_Tracker_en.xlsx'
 # ---------------------------------------------------------------------------
 # compare: CN/EN consistency check (originally compare_cn_en.py)
 # ---------------------------------------------------------------------------
-CN, EN = "Targets_cn.xlsx", "Targets_en.xlsx"
+CN, EN = "China_Climate_Target_Tracker_cn.xlsx", "China_Climate_Target_Tracker_en.xlsx"
 
 CN_COLUMN_MAP = {
     "公布年份": "Announcement_Year", "指标": "Metric", "方向": "Direction",
@@ -538,8 +538,8 @@ def main_compare():
 # ---------------------------------------------------------------------------
 # data: fix CN/EN data diffs (originally fix_cn_en_data.py)
 # ---------------------------------------------------------------------------
-CN_PATH = 'Targets_cn.xlsx'
-EN_PATH = 'Targets_en.xlsx'
+CN_PATH = 'China_Climate_Target_Tracker_cn.xlsx'
+EN_PATH = 'China_Climate_Target_Tracker_en.xlsx'
 
 # 1-based 列号
 C = {'metric': 2, 'mag': 4, 'baseline': 5, 'sentence': 10}
@@ -2231,8 +2231,8 @@ def rc_run(path: str, old_to_new: dict[str, str], lang: str) -> None:
 
 
 def main_rename_categories():
-    rc_run("Targets_cn.xlsx", CN_OLD_TO_NEW, "CN")
-    rc_run("Targets_en.xlsx", EN_OLD_TO_NEW, "EN")
+    rc_run("China_Climate_Target_Tracker_cn.xlsx", CN_OLD_TO_NEW, "CN")
+    rc_run("China_Climate_Target_Tracker_en.xlsx", EN_OLD_TO_NEW, "EN")
 # ---------------------------------------------------------------------------
 # restructure-taxonomy: apply the Target Category Revision Rationale
 # (18 -> 16 categories, CN and EN in sync, ~553 rows relabeled):
@@ -2556,7 +2556,7 @@ def percent_add_changelog(wb: openpyxl.Workbook) -> None:
 
 
 def main_unify_percent():
-    path = "Targets_en.xlsx"
+    path = "China_Climate_Target_Tracker_en.xlsx"
     backup = path.replace(".xlsx", ".pre_percent.bak")
     shutil.copy2(path, backup)
     print(f"backup -> {backup}")
@@ -2734,7 +2734,7 @@ def main_add_ip2604():
     # EN: insert at sorted position 469 (between 'refined oil annual output' and
     # 'renewable energy share in electrolytic aluminium energy use')
     ip_process(
-        "Targets_en.xlsx",
+        "China_Climate_Target_Tracker_en.xlsx",
         "Energy|Power",
         EN_TARGET,
         insert_idx=469,
@@ -2745,7 +2745,7 @@ def main_add_ip2604():
     )
     # CN: append at bottom row 564 (after last row 563)
     ip_process(
-        "Targets_cn.xlsx",
+        "China_Climate_Target_Tracker_cn.xlsx",
         "能源|电力",
         CN_TARGET,
         insert_idx=None,
