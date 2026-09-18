@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, Helvetica, sans-serif;
+        color: #222222;
+    }
+
+    .emissions-coverage {
+        width: 100%;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 12px 18px 10px;
+        background: #ffffff;
+    }
+
+    .emissions-coverage h2 {
+        margin: 0 0 16px;
+        text-align: left;
+        font-size: 15px;
+        line-height: 1.4;
+        font-weight: 700;
+        color: #222222;
+    }
+
+    .target-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-top: 2px solid #008b83;
+        border-left: 1px solid #dddddd;
+        border-bottom: 1px solid #dddddd;
+        background: #ffffff;
+    }
+
+    .target-card {
+        padding: 14px 14px 17px;
+        border-right: 1px solid #dddddd;
+        background: #ffffff;
+    }
+
+    .target-title {
+        margin: 0 0 10px;
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 600;
+        color: #222222;
+    }
+
+    .coverage-label {
+        margin: 0 0 6px;
+        font-size: 9px;
+        line-height: 1.2;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #008b83;
+    }
+
+    .coverage-text {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.45;
+        font-weight: 400;
+        color: #222222;
+    }
+
+    .footnote-link {
+        display: inline;
+        margin-left: 3px;
+        color: #008b83;
+        font-size: 9px;
+        font-weight: 700;
+        vertical-align: super;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .footnote-link:hover {
+        text-decoration: underline;
+    }
+
+    .footnote {
+        display: none;
+        margin-top: 10px;
+        padding-top: 9px;
+        border-top: 1px solid #e3e3e3;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #555555;
+    }
+
+    .footnote.open {
+        display: block;
+    }
+
+    @media (max-width: 700px) {
+        .emissions-coverage {
+            padding: 10px;
+        }
+
+        .emissions-coverage h2 {
+            font-size: 15px;
+            margin-bottom: 14px;
+        }
+
+        .target-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .target-card {
+            border-right: 1px solid #dddddd;
+            border-bottom: 1px solid #dddddd;
+        }
+
+        .target-card:last-child {
+            border-bottom: none;
+        }
+    }
+</style>
+</head>
+
+<body>
+
+<div class="emissions-coverage">
+
+    <h2>中国主要气候目标覆盖哪些排放？</h2>
+
+    <div class="target-grid">
+
+        <div class="target-card">
+            <div class="target-title">
+                2030年前实现碳达峰
+            </div>
+
+            <div class="coverage-label">
+                排放覆盖范围
+            </div>
+
+            <p class="coverage-text">
+                燃料燃烧、工业过程和产品使用产生的二氧化碳排放
+                <a class="footnote-link"
+                   onclick="toggleFootnote('footnote1')">1</a>
+            </p>
+
+            <div class="footnote" id="footnote1">
+                注1：
+                根据《中华人民共和国气候变化第一次双年透明度报告》（2024年）。
+            </div>
+        </div>
+
+        <div class="target-card">
+            <div class="target-title">
+                2035年较峰值下降7%–10%
+            </div>
+
+            <div class="coverage-label">
+                排放覆盖范围
+            </div>
+
+            <p class="coverage-text">
+                全经济范围温室气体净排放量，覆盖所有温室气体
+                <a class="footnote-link"
+                   onclick="toggleFootnote('footnote2')">2</a>
+            </p>
+
+            <div class="footnote" id="footnote2">
+                注2：
+                根据《中国2035年国家自主贡献报告》（2025年）。
+            </div>
+        </div>
+
+        <div class="target-card">
+            <div class="target-title">
+                2060年前实现碳中和
+            </div>
+
+            <div class="coverage-label">
+                排放覆盖范围
+            </div>
+
+            <p class="coverage-text">
+                全经济范围温室气体净排放量，覆盖所有温室气体
+                <a class="footnote-link"
+                   onclick="toggleFootnote('footnote3')">3</a>
+            </p>
+
+            <div class="footnote" id="footnote3">
+                注3：
+                中国官方气候政策文件并未明确界定碳中和目标的范围；不过，中国时任气候变化事务特使解振华曾在一次<a href="https://www.ncsc.org.cn/xwdt/gnxw/202107/t20210727_851433.shtml" target="_blank" rel="noopener noreferrer">讲话</a>中对此作出说明。
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function toggleFootnote(id) {
+    const footnote = document.getElementById(id);
+    footnote.classList.toggle('open');
+}
+</script>
+
+</body>
+</html>
