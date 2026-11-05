@@ -37,7 +37,7 @@ def run(cmd, cwd=None):
     if r.returncode != 0:
         print(r.stdout, r.stderr)
         sys.exit(f'FAILED: {cmd}')
-    return r.stdout
+    return r.stdout + r.stderr
 
 
 def upload_assets(with_sources):
