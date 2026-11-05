@@ -76,7 +76,7 @@ def wait_published(expected):
     """expected: {guid: sha}，轮询至 current_revision 匹配且 published。"""
     client = get_cloud_client()
     pending = dict(expected)
-    deadline = time.time() + 420
+    deadline = time.time() + 1500
     while pending and time.time() < deadline:
         for guid, sha in list(pending.items()):
             rev = client.get_content(guid).get('current_revision') or {}
