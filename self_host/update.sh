@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 自托管自动更新：拉取三个仓库，任一有变更则重启两个 app 服务。
+# 自托管自动更新：拉取四个仓库，任一有变更则重启受影响的 app 服务。
 # 由 cron 每 5 分钟调用一次（见 setup_vps.sh）。
 set -u
 BASE=/opt/climate-tracker
 CHANGED=0
 
-for repo in target_dataset target_table target_visualization; do
+for repo in target_dataset target_table target_visualization target_goals; do
   cd "$BASE/$repo" || { echo "[$(date -Is)] MISSING $repo" >> /var/log/climate-tracker-update.log; continue; }
   git fetch origin main -q
   LOCAL=$(git rev-parse HEAD)
@@ -21,6 +21,6 @@ for repo in target_dataset target_table target_visualization; do
 done
 
 if [ "$CHANGED" = "1" ]; then
-  systemctl restart climate-table climate-viz
+  systemctl restart climate-table climate-viz climate-goals
   echo "[$(date -Is)] services restarted" >> /var/log/climate-tracker-update.log
 fi

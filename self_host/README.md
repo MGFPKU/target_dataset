@@ -1,10 +1,10 @@
 # 中国气候目标追踪器 — 自托管部署（替代 Posit Connect Cloud）
 
-两个 Shiny 网页 app（target_table 数据表格、target_visualization 可视化）脱离 Posit Connect Cloud，
+三个 Shiny 网页 app（target_table 数据表格、target_visualization 可视化、target_goals 重点气候目标）脱离 Posit Connect Cloud，
 部署到国内轻量 VPS，通过 Cloudflare Tunnel 提供公网 HTTPS（免备案、免开放端口）。
 
-更新链路：本地推送 GitHub → VPS 每 5 分钟 `git pull` 三个仓库 → 有变更自动重启 app。
-数据集（xlsx）在 target_dataset 仓库内，app 以 LOCAL_DATA 模式直接读本地文件，不依赖 GitHub API。
+更新链路：本地推送 GitHub → VPS 每 5 分钟 `git pull` 四个仓库 → 有变更自动重启 app。
+数据集（xlsx）在 target_dataset 仓库内，table/viz 以 LOCAL_DATA 模式直接读本地文件（goals 数据硬编码在源码中），不依赖 GitHub API。
 
 ## 一、VPS 选购清单
 
@@ -40,14 +40,16 @@
 3. **配置域名路由**（Zero Trust 控制台 → 你的隧道 → Public Hostname）：
    - `table.<你的域名>` → `http://localhost:8001`
    - `viz.<你的域名>` → `http://localhost:8002`
+   - `goals.<你的域名>` → `http://localhost:8003`
    （保存后 Cloudflare 自动建 DNS 记录，1-2 分钟生效）
 
 4. **验证**：
    ```bash
    curl http://127.0.0.1:8001/?lang=cn   # 200 即本地服务正常
    curl http://127.0.0.1:8002/?lang=en
+   curl http://127.0.0.1:8003/?lang=CN
    ```
-   然后浏览器访问 `https://table.<你的域名>/?lang=cn` 和 `https://viz.<你的域名>/`。
+   然后浏览器访问 `https://table.<你的域名>/?lang=cn`、`https://viz.<你的域名>/` 和 `https://goals.<你的域名>/`。
 
 ## 三、日常更新流程（与以前相同，但更简单）
 

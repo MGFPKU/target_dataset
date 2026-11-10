@@ -1,0 +1,17 @@
+[Unit]
+Description=China Climate Target Tracker - key targets app (Shiny)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tracker
+WorkingDirectory=/opt/climate-tracker/target_goals
+Environment=LANGUAGE=CN
+Environment=UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+Environment=UV_PYTHON_INSTALL_MIRROR=https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download
+ExecStart=/usr/local/bin/uv run shiny run app.py --host 127.0.0.1 --port 8003
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

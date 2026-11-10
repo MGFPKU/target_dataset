@@ -37,7 +37,7 @@ echo "== 3/7 创建 tracker 用户并克隆仓库"
 id tracker >/dev/null 2>&1 || useradd -m -s /bin/bash tracker
 mkdir -p "$BASE"
 chown tracker:tracker "$BASE"
-for repo in target_dataset target_table target_visualization; do
+for repo in target_dataset target_table target_visualization target_goals; do
   if [ ! -d "$BASE/$repo/.git" ]; then
     if ! git clone -q "https://github.com/MGFPKU/$repo.git" "$BASE/$repo"; then
       echo "github 直连失败，尝试镜像 $GH_MIRROR"
@@ -55,13 +55,14 @@ done
 echo "== 4/7 预构建 uv 依赖环境（首次启动免等待）"
 sudo -u tracker env UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
   UV_PYTHON_INSTALL_MIRROR=https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download \
-  sh -c 'cd /opt/climate-tracker/target_table && uv sync -q && cd /opt/climate-tracker/target_visualization && uv sync -q'
+  sh -c 'cd /opt/climate-tracker/target_table && uv sync -q && cd /opt/climate-tracker/target_visualization && uv sync -q && cd /opt/climate-tracker/target_goals && uv sync -q'
 
 echo "== 5/7 安装 systemd 服务"
 cp "$SELF/systemd/climate-table.service" /etc/systemd/system/
 cp "$SELF/systemd/climate-viz.service" /etc/systemd/system/
+cp "$SELF/systemd/climate-goals.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now climate-table climate-viz
+systemctl enable --now climate-table climate-viz climate-goals
 
 echo "== 6/7 安装自动更新（每 5 分钟 git pull + 变更重启）"
 install -m 755 "$SELF/update.sh" /usr/local/bin/climate-update.sh
@@ -83,15 +84,16 @@ cloudflared --version
 if [ -n "$TUNNEL_TOKEN" ]; then
   cloudflared service install "$TUNNEL_TOKEN"
   systemctl enable --now cloudflared
-  echo "隧道已用 token 安装并启动。请在 Cloudflare Zero Trust 控制台为隧道添加两个 public hostname:"
+  echo "隧道已用 token 安装并启动。请在 Cloudflare Zero Trust 控制台为隧道添加三个 public hostname:"
   echo "  table.<你的域名> -> http://localhost:8001"
   echo "  viz.<你的域名>   -> http://localhost:8002"
+  echo "  goals.<你的域名> -> http://localhost:8003"
 else
   echo "未提供 tunnel token。稍后执行:"
   echo "  cloudflared service install <TOKEN> && systemctl enable --now cloudflared"
-  echo "并在 Zero Trust 控制台添加上述两个 public hostname。"
+  echo "并在 Zero Trust 控制台添加上述三个 public hostname。"
 fi
 
 echo
-echo "完成。检查状态: systemctl status climate-table climate-viz cloudflared"
-echo "本地验证: curl http://127.0.0.1:8001/?lang=cn 和 http://127.0.0.1:8002/?lang=cn"
+echo "完成。检查状态: systemctl status climate-table climate-viz climate-goals cloudflared"
+echo "本地验证: curl http://127.0.0.1:8001/?lang=cn、http://127.0.0.1:8002/?lang=cn、http://127.0.0.1:8003/?lang=CN"
