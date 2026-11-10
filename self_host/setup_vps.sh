@@ -67,15 +67,13 @@ install -m 755 "$SELF/update.sh" /usr/local/bin/climate-update.sh
 
 echo "== 7/7 安装 cloudflared 并配置隧道"
 if ! command -v cloudflared >/dev/null 2>&1; then
-  if curl -fsSL --connect-timeout 15 -o /tmp/cloudflared.deb \
-     https://pkg.cloudflare.com/cloudflared-stable-linux-amd64.deb && dpkg -i /tmp/cloudflared.deb; then
-    echo "cloudflared installed from pkg.cloudflare.com"
-  else
-    echo "改用 GitHub 镜像下载 cloudflared"
-    curl -fsSL -o /tmp/cloudflared.tgz \
-      "$GH_MIRROR/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.tgz"
-    tar -xzf /tmp/cloudflared.tgz -C /usr/local/bin cloudflared
-  fi
+  # api.github.com 解析最新版本号，再经镜像下载 deb（latest/download 重定向经镜像会 404）
+  VER=$(curl -s --max-time 20 https://api.github.com/repos/cloudflare/cloudflared/releases/latest \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+  echo "cloudflared 最新版本: $VER"
+  curl -fsSL -o /tmp/cloudflared.deb \
+    "$GH_MIRROR/https://github.com/cloudflare/cloudflared/releases/download/$VER/cloudflared-linux-amd64.deb"
+  dpkg -i /tmp/cloudflared.deb
 fi
 cloudflared --version
 
