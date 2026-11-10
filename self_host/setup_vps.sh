@@ -40,13 +40,16 @@ chown tracker:tracker "$BASE"
 for repo in target_dataset target_table target_visualization; do
   if [ ! -d "$BASE/$repo/.git" ]; then
     if ! git clone -q "https://github.com/MGFPKU/$repo.git" "$BASE/$repo"; then
-      echo "github 直连失败，尝试镜像 ghfast.top"
+      echo "github 直连失败，尝试镜像 $GH_MIRROR"
       git clone -q "$GH_MIRROR/https://github.com/MGFPKU/$repo.git" "$BASE/$repo"
     fi
   fi
-  cd "$BASE/$repo"
-  git remote set-url origin "https://github.com/MGFPKU/$repo.git" 2>/dev/null || true
+  # 国内直连 github.com 的 git 传输常超时，origin 统一走镜像
+  git -C "$BASE/$repo" remote set-url origin "$GH_MIRROR/https://github.com/MGFPKU/$repo.git"
   chown -R tracker:tracker "$BASE/$repo"
+  # update.sh 由 root cron 运行，仓库属 tracker，需要 safe.directory 例外
+  git config --global --get-all safe.directory | grep -qx "$BASE/$repo" \
+    || git config --global --add safe.directory "$BASE/$repo"
 done
 
 echo "== 4/7 预构建 uv 依赖环境（首次启动免等待）"

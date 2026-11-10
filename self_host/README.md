@@ -67,7 +67,7 @@ journalctl -u climate-table -n 50                        # app 日志
 tail -f /var/log/climate-tracker-update.log              # 更新日志
 ```
 
-- GitHub 直连不稳时，clone/pull 可加镜像前缀 `https://ghfast.top/`
+- GitHub 直连不稳时，clone/pull 已默认走 `https://gh-proxy.com/` 镜像（origin 即镜像地址）；镜像失效时可临时换 `https://ghfast.top/` 或直连
 - PyPI 依赖经清华镜像（已在 systemd 单元配置 UV_DEFAULT_INDEX），下载慢可换 `https://mirrors.aliyun.com/pypi/simple`
 - 国内访客经 Cloudflare 海外边缘（100-300ms，可用）。若以后要求国内毫秒级访问，可加备案后增加境内直连线路（见下）
 
