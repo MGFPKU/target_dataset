@@ -10,7 +10,7 @@ set -euo pipefail
 
 BASE=/opt/climate-tracker
 SELF="$BASE/target_dataset/self_host"
-GH_MIRROR="https://ghfast.top"
+GH_MIRROR="https://gh-proxy.com"
 
 if [ "$(id -u)" -ne 0 ]; then echo "请用 root 运行: sudo bash $0"; exit 1; fi
 TUNNEL_TOKEN="${1:-}"
@@ -51,6 +51,7 @@ done
 
 echo "== 4/7 预构建 uv 依赖环境（首次启动免等待）"
 sudo -u tracker env UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
+  UV_PYTHON_INSTALL_MIRROR=https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download \
   sh -c 'cd /opt/climate-tracker/target_table && uv sync -q && cd /opt/climate-tracker/target_visualization && uv sync -q'
 
 echo "== 5/7 安装 systemd 服务"
