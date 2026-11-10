@@ -1,0 +1,18 @@
+[Unit]
+Description=China Climate Target Tracker - table app (Shiny)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tracker
+WorkingDirectory=/opt/climate-tracker/target_table
+Environment=LOCAL_DATA=TRUE
+Environment=LOCAL_DATA_DIR=/opt/climate-tracker/target_dataset
+Environment=LANGUAGE=CN
+Environment=UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+ExecStart=/usr/local/bin/uv run shiny run app.py --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
