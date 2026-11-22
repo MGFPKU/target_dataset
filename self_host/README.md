@@ -1,7 +1,7 @@
 # 中国气候目标追踪器 — 自托管部署（替代 Posit Connect Cloud）
 
 三个 Shiny 网页 app（target_table 数据表格、target_visualization 可视化、target_goals 重点气候目标）脱离 Posit Connect Cloud，
-部署到国内轻量 VPS，通过 Cloudflare Tunnel 提供公网 HTTPS（免备案、免开放端口）。
+部署到国内轻量 VPS。**2026-11-22 起（ICP 备案后）为分线路直连**：境内 DNS 默认线路直连 VPS nginx，境外走 Cloudflare Tunnel（见第六节）。
 
 更新链路：本地推送 GitHub → VPS 每 5 分钟 `git pull` 四个仓库 → 有变更自动重启 app。
 数据集（xlsx）在 target_dataset 仓库内，table/viz 以 LOCAL_DATA 模式直接读本地文件（goals 数据硬编码在源码中），不依赖 GitHub API。
@@ -75,7 +75,16 @@ tail -f /var/log/climate-tracker-update.log              # 更新日志
 
 ## 五、已知取舍
 
-- **国内访问速度**：Cloudflare 免费版无中国边缘节点，国内访客走海外边缘，速度一般但稳定可用。
-  要最优体验需 ICP 备案 + 分线路解析（境内直连 VPS、境外走 Cloudflare），备案约 1-3 周，
-  可后续升级（DNS 分线路：DNSPod 免费支持）。
+- ~~**国内访问速度**：Cloudflare 免费版无中国边缘节点，国内访客走海外边缘，速度一般但稳定可用。~~
+  **已解决（2026-11-22）**：ICP 备案后启用分线路直连，境内毫秒级直达 VPS（见第六节）。境外仍走 Cloudflare。
 - **VPS 单点**：无多副本/自动扩缩容。此项目流量小、数据小，单机足够；轻量 VPS 支持快照备份。
+
+## 六、分线路直连（2026-11-22 上线）
+
+ICP 备案完成后，境内访客不再绕行 Cloudflare 国际出口：
+
+- **DNS 分线路（DNSPod，NS 已从 Cloudflare 迁入）**：table/viz/goals 各两条记录——默认线路 A → 49.233.18.82；境外线路 CNAME → `fb6c7783-9dfb-4f66-ad2f-70e15a9901cc.cfargotunnel.com`；`@` 默认线路 A → VPS。
+- **VPS nginx**（/etc/nginx/sites-available/climate）：80→301 HTTPS，443 反代 127.0.0.1:8001/8002/8003（WebSocket 透传、3600s 超时），apex 301 → table，default 404。
+- **HTTPS 证书**：acme.sh（/home/ubuntu/.acme.sh）签发 Let's Encrypt 通配符 `*.mgflab.org.cn`（DNS-01 经腾讯云 API，凭据在 account.conf 的 `SAVED_Tencent_SecretId/Key`），cron 自动续期；证书落 /home/ubuntu/acme-certs/，reloadcmd 经 sudo install 复制到 /etc/nginx/certs/ 并 reload nginx。
+- **防火墙**：腾讯云轻量控制台防火墙需放行 TCP 80/443（原默认仅 22）。
+- **健康检查**：climate-update.sh 每 5 分钟检测直连路径（curl https://table.mgflab.org.cn/），nginx/app 异常自动重启对应服务；cloudflared 由自身重连兜底，脚本仅在进程不在时重启。
